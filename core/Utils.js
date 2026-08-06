@@ -88,6 +88,25 @@ function getSheetHeaders_(sheetKey) {
 }
 
 /**
+ * Parse 1 giá trị số có thể bị định dạng dấu phẩy ngăn cách hàng nghìn
+ * (VD "4,600") thành Number hợp lệ. Dùng khi đọc các cột tồn kho/số lượng
+ * có nguy cơ bị lưu dạng text do định dạng locale trên sheet.
+ *
+ * @param {*} value
+ * @returns {number} 0 nếu không parse được.
+ * @example
+ * parseLedgerNumber_('4,600'); // 4600
+ * parseLedgerNumber_(4600);    // 4600
+ */
+function parseLedgerNumber_(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  if (typeof value === "number") return value;
+  const cleaned = String(value).replace(/,/g, "").trim();
+  const num = Number(cleaned);
+  return isNaN(num) ? 0 : num;
+}
+
+/**
  * Ghi 1 dòng mới vào sheet có công thức copy-per-row (Product_Master,
  * WMS_factory, WMS_farm) — giải quyết TD-11: các công thức này KHÔNG tự
  * giãn khi thêm dòng, phải copy thủ công từ dòng liền trước.

@@ -14,7 +14,7 @@
 		rel="stylesheet">
 	<script src="https://www.gstatic.com/charts/loader.js"></script>
 	<style>
-		<? !=include('ui/assets/style') ?>
+		<?!= include('ui/assets/style') ?>
 	</style>
 </head>
 
@@ -74,8 +74,16 @@
 					</div>
 				</div>
 				<div class="kpi-grid" id="dashboardKpis"></div>
-				<div class="grid-2 dashboard-grid" style="margin-top:12px">
-					<div class="card dashboard-alert-card">
+				<div class="grid-2" style="margin-top:12px">
+					<div class="card">
+						<h3 id="dashboardOrderPieTitle">Tỷ trọng trạng thái đơn hàng</h3>
+						<div id="dashboardOrderPie" style="height:320px;"></div>
+						<div class="state-box" id="dashboardOrderPieEmpty" style="display:none;"><span
+								class="material-symbols-outlined">pie_chart</span><span
+								id="dashboardOrderPieEmptyText">Chưa có dữ liệu đơn hàng</span>
+						</div>
+					</div>
+					<div class="card">
 						<div class="view-head" style="margin-bottom:8px;align-items:center;">
 							<h3 id="dashboardAlertTitle" style="margin:0;">Cảnh báo sắp hết cám (FMS)</h3>
 							<div style="min-width:190px;">
@@ -84,69 +92,104 @@
 								<select class="form-control" id="dashboardAlertFarmFilter"></select>
 							</div>
 						</div>
-						<div class="table-wrap dashboard-alert-wrap">
-							<table class="erp-table dashboard-alert-table">
+						<div class="table-wrap">
+							<table class="erp-table">
 								<thead id="dashboardAlertHead"></thead>
 								<tbody id="dashboardAlertBody"></tbody>
 							</table>
 						</div>
 						<div class="pagination-bar" id="dashboardAlertPagination"></div>
 					</div>
-					<div class="card dashboard-chart-card">
-						<h3 id="dashboardOrderPieTitle">Tỷ trọng trạng thái đơn hàng</h3>
-						<div id="dashboardOrderPie" style="height:260px;"></div>
-						<div class="state-box" id="dashboardOrderPieEmpty" style="display:none;"><span
-								class="material-symbols-outlined">pie_chart</span><span
-								id="dashboardOrderPieEmptyText">Chưa có dữ liệu đơn hàng</span>
-						</div>
-					</div>
 				</div>
 			</section>
 
-			<section class="view" id="view-oms">
-				<div class="view-head">
-					<div>
-						<h2 id="omsTitle">OMS - Quản lý đặt hàng</h2>
-						<p id="omsDesc">Tạo đơn 2 chiều Nhà máy và Farm, theo dõi trạng thái và truy vết.</p>
-					</div>
-					<button class="btn btn-primary" id="btnCreateOrder"><span
-							class="material-symbols-outlined">add_circle</span><span id="btnCreateOrderLabel">Tạo
-							Order</span></button>
+      <section class="view" id="view-oms">
+          <div class="view-head">
+              <div>
+                  <h2 id="omsTitle">OMS - Quản lý đơn hàng</h2>
+                  <p id="omsDesc">Tạo đơn 2 chiều Nhà máy và Farm, theo dõi trạng thái và truy vết.</p>
+              </div>
+              <div class="inline-fields">
+                  <button class="btn btn-outline" id="btnOmsMergeSuggest"><span
+                          class="material-symbols-outlined">route</span><span
+                          id="btnOmsMergeSuggestLabel">Gợi ý ghép đơn</span></button>
+				  <button class="btn btn-outline" id="btnOmsAssignTmsAll"><span
+					  class="material-symbols-outlined">auto_awesome</span><span
+					  id="btnOmsAssignTmsAllLabel">Tạo TMS cho đơn chưa hoàn thành</span></button>
+                  <button class="btn btn-primary" id="btnCreateOrder"><span
+                          class="material-symbols-outlined">add_circle</span><span id="btnCreateOrderLabel">Tạo
+                          Order</span></button>
+              </div>
+          </div>
+          <div class="card" style="padding:10px;">
+              <div class="filter-bar">
+                  <select class="form-control" id="omsStatusFilter">
+                      <option value="" id="omsStatusAllOption">Tất cả trạng thái</option>
+					  <option value="Lên kế hoạch" id="omsStatusPlannedOption">Lên kế hoạch</option>
+					  <option value="Đã lấy hàng" id="omsStatusPickedOption">Đã lấy hàng</option>
+					  <option value="Chờ giao hàng" id="omsStatusTransitOption">Chờ giao hàng</option>
+					  <option value="Hoàn tất" id="omsStatusCompletedOption">Hoàn tất</option>
+                  </select>
+                  <div class="search-box">
+                      <span class="material-symbols-outlined">search</span>
+                      <input class="form-control" id="omsSearch" placeholder="Tìm theo Order ID / Client / SKU">
+                  </div>
+                  <button class="btn btn-outline" id="btnOmsRefresh"><span
+                          class="material-symbols-outlined">refresh</span><span id="btnOmsRefreshLabel">Tải
+                          lại</span></button>
+              </div>
+              <div class="filter-bar" id="omsMergeToolbar" style="margin-top:8px;display:none;">
+                  <span class="toolbar-note" id="omsMergeSelectedCount">Đã chọn 0 đơn</span>
+                  <button class="btn btn-primary btn-sm" id="btnOmsMergeSelected"><span
+                          class="material-symbols-outlined">merge</span><span
+                          id="btnOmsMergeSelectedLabel">Ghép thành 1 lô TMS</span></button>
+                  <button class="btn btn-ghost btn-sm" id="btnOmsClearSelection">Bỏ chọn</button>
+              </div>
+          </div>
+          <div class="card" style="padding:0;margin-top:10px;">
+              <div class="table-wrap">
+                  <table class="erp-table">
+                      <thead id="omsHead"></thead>
+                      <tbody id="omsBody"></tbody>
+                  </table>
+              </div>
+          </div>
+			<section class="card" style="padding:0;margin-top:10px;" id="omsFactoryCard">
+				<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+					<h3 style="margin:0;" id="omsFactoryTitle">WMS Nhà máy</h3>
 				</div>
-				<div class="card" style="padding:10px;">
-					<div class="filter-bar">
-						<select class="form-control" id="omsStatusFilter">
-							<option value="" id="omsStatusAllOption">Tất cả trạng thái</option>
-							<option value="Chờ giao" id="omsStatusPendingOption">Chờ giao</option>
-							<option value="Đã trừ kho" id="omsStatusDeductedOption">Đã trừ kho</option>
-							<option value="Hoan tat" id="omsStatusCompletedOption">Hoan tat</option>
-							<option value="Lỗi - cần xử lý thủ công" id="omsStatusErrorOption">Lỗi - cần xử lý thủ công
-							</option>
-						</select>
-						<div class="search-box">
-							<span class="material-symbols-outlined">search</span>
-							<input class="form-control" id="omsSearch" placeholder="Tìm theo Order ID / Client / SKU">
+				<div class="grid-2" style="padding:10px;">
+					<div class="card" style="padding:0;">
+						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+							<h3 style="margin:0;" id="omsFactoryInventoryTitle">Tồn kho nhà máy</h3>
 						</div>
-						<button class="btn btn-outline" id="btnOmsRefresh"><span
-								class="material-symbols-outlined">refresh</span><span id="btnOmsRefreshLabel">Tải
-								lại</span></button>
+						<div class="table-wrap">
+							<table class="erp-table">
+								<thead id="omsFactoryInventoryHead"></thead>
+								<tbody id="omsFactoryInventoryBody"></tbody>
+							</table>
+						</div>
 					</div>
-				</div>
-				<div class="card" style="padding:0;margin-top:10px;">
-					<div class="table-wrap">
-						<table class="erp-table">
-							<thead id="omsHead"></thead>
-							<tbody id="omsBody"></tbody>
-						</table>
+					<div class="card" style="padding:0;">
+						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+							<h3 style="margin:0;" id="omsFactoryTxnTitle">Giao dịch nhà máy gần nhất</h3>
+						</div>
+						<div class="table-wrap">
+							<table class="erp-table">
+								<thead id="omsFactoryTxnHead"></thead>
+								<tbody id="omsFactoryTxnBody"></tbody>
+							</table>
+						</div>
 					</div>
 				</div>
 			</section>
+		</section>
 
 			<section class="view" id="view-wms">
 				<div class="view-head">
 					<div>
-						<h2 id="wmsTitle">WMS - Tồn kho và giao dịch</h2>
-						<p id="wmsDesc">Quản lý tồn kho theo scope Nhà máy/Farm, nhập xuất tay và adjustment.</p>
+						<h2 id="wmsTitle">WMS Farm - Tồn kho và giao dịch</h2>
+						<p id="wmsDesc">Dành cho kỹ thuật Farm: theo dõi tồn kho farm, nhập xuất tay và adjustment.</p>
 					</div>
 					<div class="inline-fields">
 						<button class="btn btn-outline" id="btnWmsInbound"><span
@@ -162,7 +205,7 @@
 				</div>
 				<div class="card" style="padding:10px;">
 					<div class="filter-bar">
-						<select class="form-control" id="wmsScopeFilter">
+						<select class="form-control" id="wmsScopeFilter" style="display:none;">
 							<option value="farm" id="wmsScopeFarmOption">Farm</option>
 							<option value="factory" id="wmsScopeFactoryOption">Factory</option>
 						</select>
@@ -235,6 +278,7 @@
 							<tbody id="fmsBody"></tbody>
 						</table>
 					</div>
+					<div class="pagination-bar" id="fmsLogPagination"></div>
 				</div>
 			</section>
 

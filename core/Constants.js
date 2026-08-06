@@ -37,15 +37,14 @@ const WMS_FACTORY_TXN_TYPE = {
 };
 
 /**
- * Trạng thái đơn hàng OMS.
- * Nguồn: PRD §3.3 (Chờ giao / Đã trừ kho / Hoàn tất) + §3.4 (Lỗi - cần xử lý thủ công).
+ * Trạng thái đơn hàng OMS theo stage vận hành.
  * @constant {Object<string,string>}
  */
 const ORDER_STATUS = {
-  PENDING: 'Chờ giao',
-  STOCK_DEDUCTED: 'Đã trừ kho',
-  COMPLETED: 'Hoan tat', // giữ nguyên chính tả không dấu như dữ liệu mẫu thực tế trong TR §4.8
-  ERROR: 'Lỗi - cần xử lý thủ công'
+  PLANNED: 'Lên kế hoạch',
+  PICKED_UP: 'Đã lấy hàng',
+  IN_TRANSIT: 'Chờ giao hàng',
+  COMPLETED: 'Hoàn tất'
 };
 
 /**

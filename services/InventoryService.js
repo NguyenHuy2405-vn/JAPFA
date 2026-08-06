@@ -175,7 +175,7 @@ function getFarmInventoryStatus(tenantId) {
         FLOCK_ID: flockId,
         DATE: currentRow["DATE"],
         SKU: sku,
-        currentStock: currentRow["End_qtty"],
+        currentStock: parseLedgerNumber_(currentRow["End_qtty"]),
         badge: badge,
         badgeColor: INVENTORY_BADGE_COLOR[badge] || INVENTORY_BADGE_COLOR[""],
       };
@@ -221,7 +221,7 @@ function getFactoryInventoryStatus() {
       });
       return {
         SKU: sku,
-        currentStock: row["Tồn kho cuối kỳ"],
+        currentStock: parseLedgerNumber_(row["Tồn kho cuối kỳ"]),
         lastTransactionDate: row["DATE"],
         lastTransactionType: row["Loại giao dịch"],
         thresholds: th
@@ -267,7 +267,7 @@ function getCurrentStock_(scope, tenantId, sku) {
   const latest = rows.reduce(function (a, b) {
     return b.__row > a.__row ? b : a;
   });
-  return Number(latest[endQtyField]) || 0;
+  return parseLedgerNumber_(latest[endQtyField]); // đổi từ Number(...) || 0
 }
 
 /**
@@ -282,25 +282,13 @@ function getCurrentStock_(scope, tenantId, sku) {
  */
 function resolveLedgerSkuKey_(scope, tenantId, sku) {
   const sheetKey = scope === "factory" ? "WMS_FACTORY" : "WMS_FARM";
-  const normalizedTarget = normalizeSku_(sku);
-  const tenantRows = getSheetData_(sheetKey).filter(function (r) {
-    return tenantIdEquals_(r["Tenant_id"], tenantId);
+  const rows = getSheetData_(sheetKey).filter(function (r) {
+    return (
+      tenantIdEquals_(r["Tenant_id"], tenantId) && skuEquals_(r["SKU"], sku)
+    );
   });
-  if (tenantRows.length === 0) return sku;
-
-  // Ưu tiên khớp CHÍNH XÁC SKU trước để tránh map nhầm sang biến thể khác.
-  const exactRows = tenantRows.filter(function (r) {
-    return normalizeSku_(r["SKU"]) === normalizedTarget;
-  });
-  const candidateRows =
-    exactRows.length > 0
-      ? exactRows
-      : tenantRows.filter(function (r) {
-          return skuEquals_(r["SKU"], sku);
-        });
-
-  if (candidateRows.length === 0) return sku;
-  const latest = candidateRows.reduce(function (a, b) {
+  if (rows.length === 0) return sku;
+  const latest = rows.reduce(function (a, b) {
     return b.__row > a.__row ? b : a;
   });
   return latest["SKU"] || sku;

@@ -53,6 +53,8 @@
       this._onSubmit = cfg.onSubmit || null;
 
       const submitBtn = document.getElementById('erpModalSubmitBtn');
+      submitBtn.style.display = '';
+      submitBtn.disabled = false;
       submitBtn.onclick = () => { if (this._onSubmit) this._onSubmit(submitBtn); };
 
       document.getElementById('erpModalOverlay').classList.add('is-open');
@@ -64,6 +66,9 @@
     close: function () {
       document.getElementById('erpModalOverlay').classList.remove('is-open');
       document.getElementById('erpModalBody').innerHTML = '';
+      const submitBtn = document.getElementById('erpModalSubmitBtn');
+      submitBtn.style.display = '';
+      submitBtn.disabled = false;
       this._onSubmit = null;
     },
 

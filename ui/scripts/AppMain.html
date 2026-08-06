@@ -18,9 +18,14 @@
 			products: [],
 			flocks: [],
 			loaiGa: [],
+			fmsLogRows: [],
+			fmsLogPage: 1,
+			fmsLogPageSize: 20,
 			dashboardAlertWindowDays: 7,
 			dashboardAlertItems: [],
-			dashboardAlertFarm: ''
+			dashboardAlertFarm: '',
+      omsRows: [],
+			omsSelectedIds: {}
 		},
 
 		init: async function () {
@@ -45,7 +50,12 @@
 				const isOpen = menu.classList.toggle('is-open');
 				document.getElementById('btnLang').setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 			});
-
+	document.getElementById('omsBody').addEventListener('change', (evt) => this.handleOmsRowCheckboxChange(evt));
+	document.getElementById('omsBody').addEventListener('click', (evt) => this.handleOmsRowActionClick(evt));
+      document.getElementById('btnOmsMergeSuggest').addEventListener('click', () => this.openOrderMergeSuggestModal());
+	document.getElementById('btnOmsAssignTmsAll').addEventListener('click', () => this.assignTmsForAllUnfinishedOrders());
+      document.getElementById('btnOmsMergeSelected').addEventListener('click', () => this.mergeSelectedOrdersToTms());
+      document.getElementById('btnOmsClearSelection').addEventListener('click', () => this.clearOmsSelection());
 			document.querySelectorAll('#langMenu [data-lang]').forEach((btn) => {
 				btn.addEventListener('click', () => {
 					this.setLanguage(btn.dataset.lang);
@@ -79,6 +89,7 @@
 			document.getElementById('wmsScopeFilter').addEventListener('change', () => this.updateWmsScopeUi());
 			document.getElementById('wmsTenantFilter').addEventListener('change', () => this.loadWms(true));
 			document.getElementById('fmsFlockFilter').addEventListener('change', () => this.loadFms(true));
+			document.getElementById('fmsLogPagination').addEventListener('click', (evt) => this.handleFmsLogPaginationClick(evt));
 
 			document.getElementById('btnCreateOrder').addEventListener('click', () => this.openCreateOrderModal());
 			document.getElementById('btnWmsInbound').addEventListener('click', () => this.openTxnModal('Inbound'));
@@ -128,6 +139,7 @@
 			this.state.loaiGa = loaiGaResp.data || [];
 
 			this.renderUserChip();
+			this.applyRoleBasedViewAccess();
 
 			this.fillTenantOptions();
 			this.fillFlockOptions();
@@ -209,12 +221,15 @@
 				dashboardAlertFarmFilterLabel: 'dashboardAlertFlockFilterLabel',
 				omsTitle: 'omsTitle',
 				omsDesc: 'omsDesc',
+				omsFactoryTitle: 'wmsScopeFactory',
+				omsFactoryInventoryTitle: 'wmsInventoryTitle',
+				omsFactoryTxnTitle: 'wmsTxnTitle',
 				btnCreateOrderLabel: 'btnCreateOrder',
 				omsStatusAllOption: 'statusAll',
-				omsStatusPendingOption: 'statusPending',
-				omsStatusDeductedOption: 'statusDeducted',
+				omsStatusPlannedOption: 'statusPlanned',
+				omsStatusPickedOption: 'statusPickedUp',
+				omsStatusTransitOption: 'statusInTransit',
 				omsStatusCompletedOption: 'statusCompleted',
-				omsStatusErrorOption: 'statusError',
 				btnOmsRefreshLabel: 'reload',
 				wmsTitle: 'wmsTitle',
 				wmsDesc: 'wmsDesc',
@@ -242,7 +257,11 @@
 				setupConfigTitle: 'setupConfigTitle',
 				setupProductTitle: 'setupProductTitle',
 				setupFeedTitle: 'setupFeedTitle',
-				setupPolicyTitle: 'setupPolicyTitle'
+				setupPolicyTitle: 'setupPolicyTitle',
+        btnOmsMergeSuggestLabel: 'btnOmsMergeSuggestLabel',
+				btnOmsAssignTmsAllLabel: 'btnOmsAssignTmsAllLabel',
+        btnOmsMergeSelectedLabel: 'btnOmsMergeSelectedLabel',
+        btnOmsClearSelection: 'btnOmsClearSelectionLabel'
 			};
 			Object.keys(map).forEach((id) => {
 				const el = document.getElementById(id);
@@ -260,6 +279,43 @@
 			if (!this.state.user) return;
 			document.getElementById('userChip').innerHTML = '<span class="material-symbols-outlined">person</span>' +
 				this.escape(this.state.user.email || 'unknown') + ' | ' + this.escape(this.state.user.role || 'User');
+		},
+
+		isProcurementUser: function () {
+			const role = String((this.state.user && this.state.user.role) || '').toLowerCase();
+			return /procurement|purchasing|buyer|mua\s*hang/.test(role);
+		},
+
+		isFarmTechUser: function () {
+			const role = String((this.state.user && this.state.user.role) || '').toLowerCase();
+			return /farm[_\s-]*technical|farm[_\s-]*tech|technical[_\s-]*farm|ky\s*thuat.*farm|farm.*ky\s*thuat/.test(role);
+		},
+
+		applyRoleBasedViewAccess: function () {
+			const tabOms = document.querySelector('.nav-tab[data-view="oms"]');
+			const tabWms = document.querySelector('.nav-tab[data-view="wms"]');
+			if (!tabOms || !tabWms) return;
+
+			const isProc = this.isProcurementUser();
+			const isFarmTech = this.isFarmTechUser();
+
+			if (isProc) {
+				tabOms.style.display = '';
+				tabWms.style.display = 'none';
+			} else if (isFarmTech) {
+				tabOms.style.display = 'none';
+				tabWms.style.display = '';
+			} else {
+				tabOms.style.display = '';
+				tabWms.style.display = '';
+			}
+
+			if (this.state.activeView === 'oms' && tabOms.style.display === 'none') {
+				this.switchView('wms');
+			}
+			if (this.state.activeView === 'wms' && tabWms.style.display === 'none') {
+				this.switchView('oms');
+			}
 		},
 
 		refreshActiveView: async function (force) {
@@ -294,7 +350,9 @@
 		},
 
 		updateWmsScopeUi: function () {
-			const scope = document.getElementById('wmsScopeFilter').value;
+			const scopeFilter = document.getElementById('wmsScopeFilter');
+			if (scopeFilter) scopeFilter.value = 'farm';
+			const scope = 'farm';
 			const tenant = document.getElementById('wmsTenantFilter');
 			tenant.disabled = scope === 'factory';
 			if (scope === 'factory') tenant.value = '';
@@ -325,18 +383,10 @@
 					'</div>'
 				).join('');
 
-				const aggregatedStatusCounts = {};
-				Object.keys(statusCounts).forEach((k) => {
-					const value = Number(statusCounts[k]) || 0;
-					if (value <= 0) return;
-					const normalized = this.normalizeOrderStatus(k);
-					aggregatedStatusCounts[normalized] = (aggregatedStatusCounts[normalized] || 0) + value;
-				});
-
 				const chartData = [[this.t('hStatus'), this.t('hCount')]];
 				const chartColors = [];
-				Object.keys(aggregatedStatusCounts).forEach((k) => {
-					const value = Number(aggregatedStatusCounts[k]) || 0;
+				Object.keys(statusCounts).forEach((k) => {
+					const value = Number(statusCounts[k]) || 0;
 					if (value <= 0) return;
 					chartData.push([this.displayOrderStatus(k), value]);
 					chartColors.push(this.orderStatusColor(k));
@@ -412,58 +462,501 @@
 		},
 
 		loadOms: async function () {
-			const body = document.getElementById('omsBody');
-			body.innerHTML = '<tr><td colspan="10"><div class="state-box">' + this.escape(this.t('msgLoadingOrders')) + '</div></td></tr>';
-			try {
-				const status = document.getElementById('omsStatusFilter').value;
-				const search = document.getElementById('omsSearch').value.trim().toLowerCase();
-				const filters = status ? { Status: status } : {};
-				const resp = await this.rpc('getOrderList', filters);
-				let rows = resp.data || [];
-				if (search) {
-					rows = rows.filter((r) => {
-						const target = [
-							this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID']),
-							this.getRowValue(r, ['Client']),
-							this.getRowValue(r, ['Mã hàng', 'SKU']),
-							this.getRowValue(r, ['Nơi đi']),
-							this.getRowValue(r, ['Nơi đến'])
-						].join(' ').toLowerCase();
-						return target.indexOf(search) !== -1;
-					});
-				}
+        const body = document.getElementById('omsBody');
+        body.innerHTML = '<tr><td colspan="10"><div class="state-box">' + this.escape(this.t('msgLoadingOrders')) + '</div></td></tr>';
+        try {
+            const status = document.getElementById('omsStatusFilter').value;
+            const search = document.getElementById('omsSearch').value.trim().toLowerCase();
+            const filters = status ? { Status: status } : {};
+            const resp = await this.rpc('getOrderList', filters);
+            let rows = resp.data || [];
+            if (search) {
+                rows = rows.filter((r) => {
+                    const target = [
+                        this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID']),
+                        this.getRowValue(r, ['Client']),
+                        this.getRowValue(r, ['Mã hàng', 'SKU']),
+                        this.getRowValue(r, ['Nơi đi']),
+						this.getRowValue(r, ['Nơi đến']),
+						this.getRowValue(r, ['FLOCK_ID', 'FLOCK ID', 'Flock ID'])
+                    ].join(' ').toLowerCase();
+                    return target.indexOf(search) !== -1;
+                });
+            }
+			this.state.omsRows = rows;
 
-				document.getElementById('omsHead').innerHTML = '<tr><th>' + this.escape(this.t('hOrderId')) + '</th><th>' + this.escape(this.t('hClient')) + '</th><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hQty')) + '</th><th>' + this.escape(this.t('hFrom')) + '</th><th>' + this.escape(this.t('hTo')) + '</th><th>' + this.escape(this.t('hStatus')) + '</th><th>' + this.escape(this.t('hCreateDate')) + '</th></tr>';
-				body.innerHTML = rows.length === 0
-					? '<tr><td colspan="8"><div class="state-box"><span class="material-symbols-outlined">inbox</span>' + this.escape(this.t('msgNoOrders')) + '</div></td></tr>'
-					: rows.slice(0, 200).map((r) => {
-						const orderId = this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID']);
-						const client = this.getRowValue(r, ['Client']);
-						const sku = this.getRowValue(r, ['Mã hàng', 'SKU']);
-						const qty = this.getRowValue(r, ['Số lượng', 'Qty']);
-						const from = this.getRowValue(r, ['Nơi đi']);
-						const to = this.getRowValue(r, ['Nơi đến']);
-						const statusText = this.getRowValue(r, ['Status', 'Trạng thái']);
-						const createDate = this.getRowValue(r, ['Create Date', 'Create date', 'Ngày tạo đơn hàng']);
-						return '<tr>' +
-							'<td>' + this.escape(orderId || '-') + '</td>' +
-							'<td>' + this.escape(client || '') + '</td>' +
-							'<td>' + this.escape(sku || '') + '</td>' +
-							'<td>' + this.escape(String(qty || '')) + '</td>' +
-							'<td>' + this.escape(this.translateLocation(from || '')) + '</td>' +
-							'<td>' + this.escape(this.translateLocation(to || '')) + '</td>' +
-							'<td><span class="badge ' + this.orderStatusClass(statusText) + '">' + this.escape(this.displayOrderStatus(statusText || '')) + '</span></td>' +
-							'<td>' + this.formatDate(createDate) + '</td>' +
-							'</tr>';
-					}).join('');
-				this.state.loadedViews.oms = true;
+            // Giữ lại lựa chọn cũ chỉ cho những Order ID còn xuất hiện trong danh sách mới
+            const visibleIds = {};
+            rows.forEach((r) => { visibleIds[this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID'])] = true; });
+            Object.keys(this.state.omsSelectedIds || {}).forEach((id) => {
+                if (!visibleIds[id]) delete this.state.omsSelectedIds[id];
+            });
+
+            document.getElementById('omsHead').innerHTML =
+				'<tr><th>' + this.escape(this.t('hSelect')) + '</th><th>' + this.escape(this.t('hOrderId')) + '</th><th>' + this.escape(this.t('hClient')) + '</th><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hQty')) + '</th><th>' + this.escape(this.t('hFrom')) + '</th><th>' + this.escape(this.t('hTo')) + '</th><th>' + this.escape(this.t('hFlock')) + '</th><th>' + this.escape(this.t('hStatus')) + '</th><th>' + this.escape(this.t('hTmsOrderId')) + '</th><th>' + this.escape(this.t('hCreateDate')) + '</th><th>' + this.escape(this.t('hAction')) + '</th></tr>';
+            body.innerHTML = rows.length === 0
+				? '<tr><td colspan="12"><div class="state-box"><span class="material-symbols-outlined">inbox</span>' + this.escape(this.t('msgNoOrders')) + '</div></td></tr>'
+                : rows.slice(0, 200).map((r) => {
+                    const orderId = this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID']);
+                    const client = this.getRowValue(r, ['Client']);
+                    const sku = this.getRowValue(r, ['Mã hàng', 'SKU']);
+                    const qty = this.getRowValue(r, ['Số lượng', 'Qty']);
+                    const from = this.getRowValue(r, ['Nơi đi']);
+                    const to = this.getRowValue(r, ['Nơi đến']);
+					const flockId = this.getRowValue(r, ['FLOCK_ID', 'FLOCK ID', 'Flock ID']);
+                    const statusText = this.getRowValue(r, ['Status', 'Trạng thái']);
+                    const tmsOrderId = this.getRowValue(r, ['TMS_Order ID']);
+                    const createDate = this.getRowValue(r, ['Create Date', 'Create date', 'Ngày tạo đơn hàng']);
+                    const eligible = this.isOmsOrderMergeable(r);
+					const editable = this.isOmsOrderEditable(r);
+                    const checked = orderId && this.state.omsSelectedIds[orderId] ? 'checked' : '';
+                    const checkboxHtml = eligible
+                        ? '<input type="checkbox" data-order-id="' + this.escapeAttr(orderId) + '" ' + checked + '>'
+                        : '<input type="checkbox" disabled title="' + this.escapeAttr(this.t('mergeNotEligibleHint')) + '">';
+					const actionButtons =
+						'<div class="inline-fields" style="gap:6px;">' +
+						'<button class="btn btn-outline btn-sm" type="button" data-view-order-id="' + this.escapeAttr(orderId) + '">' + this.escape(this.t('btnViewDetail')) + '</button>' +
+						'<button class="btn btn-ghost btn-sm" type="button" data-edit-order-id="' + this.escapeAttr(orderId) + '" ' + (editable ? '' : 'disabled title="' + this.escapeAttr(this.t('editNotEligibleHint')) + '"') + '>' + this.escape(this.t('btnEditOrder')) + '</button>' +
+						'</div>';
+                    return '<tr>' +
+                        '<td>' + checkboxHtml + '</td>' +
+                        '<td>' + this.escape(orderId || '-') + '</td>' +
+                        '<td>' + this.escape(client || '') + '</td>' +
+                        '<td>' + this.escape(sku || '') + '</td>' +
+                        '<td>' + this.escape(String(qty || '')) + '</td>' +
+                        '<td>' + this.escape(this.translateLocation(from || '')) + '</td>' +
+                        '<td>' + this.escape(this.translateLocation(to || '')) + '</td>' +
+						'<td>' + this.escape(flockId || '-') + '</td>' +
+                        '<td><span class="badge ' + this.orderStatusClass(statusText) + '">' + this.escape(this.displayOrderStatus(statusText || '')) + '</span></td>' +
+                        '<td>' + (tmsOrderId ? '<span class="badge badge-outline">' + this.escape(tmsOrderId) + '</span>' : '-') + '</td>' +
+                        '<td>' + this.formatDate(createDate) + '</td>' +
+						'<td>' + actionButtons + '</td>' +
+                        '</tr>';
+                }).join('');
+            this.state.loadedViews.oms = true;
+            this.updateOmsMergeToolbar();
+			await this.loadOmsFactoryPanel();
+        } catch (err) {
+			body.innerHTML = '<tr><td colspan="12"><div class="state-box" style="color:#b3261e;">' + this.escape(err.message || this.t('toastOmsFailed')) + '</div></td></tr>';
+        }
+    },
+
+		loadOmsFactoryPanel: async function () {
+			const invBody = document.getElementById('omsFactoryInventoryBody');
+			const txnBody = document.getElementById('omsFactoryTxnBody');
+			if (!invBody || !txnBody) return;
+
+			invBody.innerHTML = '<tr><td colspan="6"><div class="state-box">' + this.escape(this.t('msgLoadingInventory')) + '</div></td></tr>';
+			txnBody.innerHTML = '<tr><td colspan="6"><div class="state-box">' + this.escape(this.t('msgLoadingTransactions')) + '</div></td></tr>';
+
+			try {
+				const resp = await this.rpc('getDashboardWMS', 'factory', null, 12);
+				const data = resp.data || {};
+				const inventory = data.inventory || [];
+				const txns = data.recentTransactions || [];
+
+				document.getElementById('omsFactoryInventoryHead').innerHTML = '<tr><th>' + this.escape(this.t('hTenant')) + '</th><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hCurrentStock')) + '</th><th>' + this.escape(this.t('hBadge')) + '</th><th>' + this.escape(this.t('hLastDate')) + '</th><th>' + this.escape(this.t('hNote')) + '</th></tr>';
+				invBody.innerHTML = inventory.length === 0
+					? '<tr><td colspan="6"><div class="state-box">' + this.escape(this.t('msgNoInventory')) + '</div></td></tr>'
+					: inventory.slice(0, 150).map((r) =>
+						'<tr>' +
+						'<td>' + this.escape(r.Tenant_id || r.Tenant || '-') + '</td>' +
+						'<td>' + this.escape(r.SKU || '-') + '</td>' +
+						'<td>' + this.escape(String(r.currentStock || 0)) + '</td>' +
+						'<td><span class="badge ' + this.badgeClass(r.badge) + '">' + this.escape(r.badge || 'N/A') + '</span></td>' +
+						'<td>' + this.formatDate(r.DATE || r.lastTransactionDate) + '</td>' +
+						'<td>' + this.escape(r.feedState || r.lastTransactionType || '-') + '</td>' +
+						'</tr>'
+					).join('');
+
+				document.getElementById('omsFactoryTxnHead').innerHTML = '<tr><th>' + this.escape(this.t('hTenant')) + '</th><th>' + this.escape(this.t('hDate')) + '</th><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hTxnType')) + '</th><th>' + this.escape(this.t('hIn')) + '</th><th>' + this.escape(this.t('hOut')) + '</th></tr>';
+				txnBody.innerHTML = txns.length === 0
+					? '<tr><td colspan="6"><div class="state-box">' + this.escape(this.t('msgNoTransactions')) + '</div></td></tr>'
+					: txns.slice(0, 150).map((r) =>
+						'<tr>' +
+						'<td>' + this.escape(r.Tenant_id || '-') + '</td>' +
+						'<td>' + this.formatDate(r.DATE) + '</td>' +
+						'<td>' + this.escape(r.SKU || '-') + '</td>' +
+						'<td>' + this.escape(r['Loại giao dịch'] || '-') + '</td>' +
+						'<td>' + this.escape(String(r['Số lượng In'] || r.In_qtty || 0)) + '</td>' +
+						'<td>' + this.escape(String(r['Số lượng Out'] || r.Out_qtty || 0)) + '</td>' +
+						'</tr>'
+					).join('');
 			} catch (err) {
-				body.innerHTML = '<tr><td colspan="8"><div class="state-box" style="color:#b3261e;">' + this.escape(err.message || this.t('toastOmsFailed')) + '</div></td></tr>';
+				invBody.innerHTML = '<tr><td colspan="6"><div class="state-box" style="color:#b3261e;">' + this.escape(err.message || this.t('toastWmsFailed')) + '</div></td></tr>';
+				txnBody.innerHTML = invBody.innerHTML;
+			}
+		},
+	/**
+	 * 1 Order chỉ được chọn để ghép TMS khi chưa hoàn thành
+	 * và chưa có TMS_Order ID — khớp điều kiện validate fail-fast ở backend,
+	 * tránh user chọn rồi bị BE từ chối.
+	 */
+	isOmsOrderMergeable: function (row) {
+      const status = String(this.getRowValue(row, ['Status', 'Trạng thái']) || '').trim();
+        const tmsOrderId = this.getRowValue(row, ['TMS_Order ID']);
+		return status === 'Lên kế hoạch' && !tmsOrderId;
+	},
+
+	isOmsOrderEditable: function (row) {
+		const tmsOrderId = this.getRowValue(row, ['TMS_Order ID']);
+		return !tmsOrderId;
+	},
+
+	handleOmsRowActionClick: function (evt) {
+		const viewBtn = evt.target.closest('[data-view-order-id]');
+		if (viewBtn) {
+			this.openOrderDetailModal(viewBtn.dataset.viewOrderId);
+			return;
+		}
+		const editBtn = evt.target.closest('[data-edit-order-id]');
+		if (editBtn) {
+			if (editBtn.disabled) return;
+			this.openEditOrderModal(editBtn.dataset.editOrderId);
+		}
+    },
+
+    handleOmsRowCheckboxChange: function (evt) {
+        const cb = evt.target.closest('input[type="checkbox"][data-order-id]');
+        if (!cb) return;
+        const orderId = cb.dataset.orderId;
+        if (cb.checked) {
+            this.state.omsSelectedIds[orderId] = true;
+        } else {
+            delete this.state.omsSelectedIds[orderId];
+        }
+        this.updateOmsMergeToolbar();
+    },
+
+    updateOmsMergeToolbar: function () {
+        const count = Object.keys(this.state.omsSelectedIds || {}).length;
+        const toolbar = document.getElementById('omsMergeToolbar');
+        toolbar.style.display = count > 0 ? 'flex' : 'none';
+        document.getElementById('omsMergeSelectedCount').textContent = this.formatT('omsMergeSelectedCount', { count: count });
+    },
+
+    clearOmsSelection: function () {
+        this.state.omsSelectedIds = {};
+        document.querySelectorAll('#omsBody input[type="checkbox"][data-order-id]').forEach((cb) => { cb.checked = false; });
+        this.updateOmsMergeToolbar();
+    },
+
+	openOrderDetailModal: async function (orderId) {
+		const row = (this.state.omsRows || []).find((r) => {
+			return String(this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID'])) === String(orderId);
+		});
+		if (!row) {
+			this.toast(this.t('toastOrderNotFound'), 'error');
+			return;
+		}
+
+		const detailRows = [
+			[this.t('hOrderId'), this.getRowValue(row, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID']) || '-'],
+			[this.t('hClient'), this.getRowValue(row, ['Client']) || '-'],
+			[this.t('hSku'), this.getRowValue(row, ['Mã hàng', 'SKU']) || '-'],
+			[this.t('hQty'), this.getRowValue(row, ['Số lượng', 'Qty']) || '-'],
+			[this.t('fUom'), this.getRowValue(row, ['UOM']) || '-'],
+			[this.t('hFrom'), this.translateLocation(this.getRowValue(row, ['Nơi đi']) || '-')],
+			[this.t('hTo'), this.translateLocation(this.getRowValue(row, ['Nơi đến']) || '-')],
+			[this.t('hFlock'), this.getRowValue(row, ['FLOCK_ID', 'FLOCK ID', 'Flock ID']) || '-'],
+			[this.t('fPickupDate'), this.formatDate(this.getRowValue(row, ['Ngày lấy hàng']))],
+			[this.t('fEtaDate'), this.formatDate(this.getRowValue(row, ['Ngày giao hàng (Dự kiến)']))],
+			[this.t('hStatus'), this.displayOrderStatus(this.getRowValue(row, ['Status']) || '-')],
+			[this.t('hTmsOrderId'), this.getRowValue(row, ['TMS_Order ID']) || '-'],
+			[this.t('hCreateDate'), this.formatDate(this.getRowValue(row, ['Create Date', 'Create date', 'Ngày tạo đơn hàng']))],
+			[this.t('labelNote'), this.getRowValue(row, ['Note']) || '-']
+		];
+
+		const detailHtml =
+			'<div class="table-wrap" style="margin-bottom:10px;">' +
+			'<table class="erp-table"><tbody>' +
+			detailRows.map((item) => '<tr><th style="width:220px;">' + this.escape(item[0]) + '</th><td>' + this.escape(String(item[1])) + '</td></tr>').join('') +
+			'</tbody></table></div>' +
+			'<div id="orderTraceBox" class="state-box">' + this.escape(this.t('msgLoadingTransactions')) + '</div>';
+
+		ErpModal.open({
+			title: this.t('orderDetailTitle'),
+			size: 'lg',
+			submitLabel: this.t('commonCancel'),
+			bodyHtml: detailHtml,
+			onOpen: async () => {
+				try {
+					const traceResp = await this.rpc('getOrderTraceability', orderId);
+					const trace = traceResp.data || {};
+					const factoryRows = trace.factory || [];
+					const farmRows = trace.farm || [];
+					document.getElementById('orderTraceBox').innerHTML =
+						'<div style="font-weight:600;margin-bottom:6px;">' + this.escape(this.t('orderTraceTitle')) + '</div>' +
+						'<div>' + this.escape(this.t('orderTraceFactory')) + ': <b>' + this.escape(String(factoryRows.length)) + '</b></div>' +
+						'<div>' + this.escape(this.t('orderTraceFarm')) + ': <b>' + this.escape(String(farmRows.length)) + '</b></div>';
+				} catch (err) {
+					document.getElementById('orderTraceBox').innerHTML = '<div style="color:#b3261e;">' + this.escape(err.message || this.t('toastOrderTraceFailed')) + '</div>';
+				}
+			}
+		});
+
+		document.getElementById('erpModalSubmitBtn').style.display = 'none';
+	},
+
+	openEditOrderModal: function (orderId) {
+		const row = (this.state.omsRows || []).find((r) => {
+			return String(this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID'])) === String(orderId);
+		});
+		if (!row) {
+			this.toast(this.t('toastOrderNotFound'), 'error');
+			return;
+		}
+
+		const locationSet = {};
+		const locationOptions = this.state.configs
+			.map((c) => String(c['Managed by'] || c.Tenant || '').trim())
+			.filter((name) => {
+				if (!name) return false;
+				const key = name.toLowerCase();
+				if (locationSet[key]) return false;
+				locationSet[key] = true;
+				return true;
+			})
+			.map((name) => '<option value="' + this.escapeAttr(name) + '">' + this.escape(name) + '</option>')
+			.join('');
+
+		const skuOptions = this.state.products.map((p) => {
+			const name = String(p['Tên hàng hóa'] || '').trim();
+			return '<option value="' + this.escapeAttr(name) + '">' + this.escape(name) + '</option>';
+		}).join('');
+
+		const buildFlockOptions = (destinationName, selectedValue) => {
+			const normalizedDest = String(destinationName || '').trim().toLowerCase();
+			const allFlocks = this.state.configs.filter((c) => String(c.FLOCK_ID || '').trim() !== '');
+			const scoped = allFlocks.filter((c) => String(c.Tenant || '').trim().toLowerCase() === normalizedDest);
+			const source = scoped.length > 0 ? scoped : allFlocks;
+			const options = ['<option value="">' + this.escape(this.t('selectFlock')) + '</option>']
+				.concat(source.map((c) => {
+					const flockName = String(c.FLOCK_NAME || c.FLOCK_ID || '').trim();
+					const flockId = String(c.FLOCK_ID || '').trim();
+					const tenantName = String(c.Tenant || '').trim();
+					const selected = selectedValue && selectedValue.toLowerCase() === flockName.toLowerCase() ? ' selected' : '';
+					return '<option value="' + this.escapeAttr(flockName) + '" data-flock-id="' + this.escapeAttr(flockId) + '"' + selected + '>' +
+						this.escape(flockName + ' (' + flockId + ')' + (tenantName ? ' - ' + tenantName : '')) +
+					'</option>';
+				}))
+				.join('');
+			return options;
+		};
+
+		ErpModal.open({
+			title: this.t('orderEditTitle'),
+			size: 'lg',
+			bodyHtml:
+				'<div class="form-grid">' +
+				this.formField(this.t('hOrderId'), '<input class="form-control" id="e_order_id" disabled value="' + this.escapeAttr(orderId) + '">') +
+				this.formField(this.t('hStatus'), '<select class="form-control" id="e_status">' +
+					'<option value="Lên kế hoạch">' + this.escape(this.t('statusPlanned')) + '</option>' +
+					'<option value="Đã lấy hàng">' + this.escape(this.t('statusPickedUp')) + '</option>' +
+					'<option value="Chờ giao hàng">' + this.escape(this.t('statusInTransit')) + '</option>' +
+					'<option value="Hoàn tất">' + this.escape(this.t('statusCompleted')) + '</option>' +
+				'</select>') +
+				this.formField(this.t('fClient'), '<input class="form-control" id="e_client" value="' + this.escapeAttr(this.getRowValue(row, ['Client']) || '') + '">') +
+				this.formField(this.t('fSku'), '<select class="form-control" id="e_sku">' + skuOptions + '</select>') +
+				this.formField(this.t('fQty'), '<input class="form-control" id="e_qty" type="number" min="1" value="' + this.escapeAttr(String(this.getRowValue(row, ['Số lượng', 'Qty']) || '')) + '">') +
+				this.formField(this.t('fUom'), '<input class="form-control" id="e_uom" value="' + this.escapeAttr(this.getRowValue(row, ['UOM']) || '') + '">') +
+				this.formField(this.t('fFrom'), '<select class="form-control" id="e_from">' + locationOptions + '</select>') +
+				this.formField(this.t('fTo'), '<select class="form-control" id="e_to">' + locationOptions + '</select>') +
+				this.formField(this.t('fFlock'), '<select class="form-control" id="e_flock_name"></select>') +
+				this.formField(this.t('fPickupDate'), '<div class="date-proxy"><input class="form-control date-proxy-display" id="e_pick_display" type="text" placeholder="dd/mm/yyyy" readonly><input class="date-proxy-native" id="e_pick" type="date" aria-label="' + this.escapeAttr(this.t('fPickupDate')) + '"></div>') +
+				this.formField(this.t('fEtaDate'), '<div class="date-proxy"><input class="form-control date-proxy-display" id="e_eta_display" type="text" placeholder="dd/mm/yyyy" readonly><input class="date-proxy-native" id="e_eta" type="date" aria-label="' + this.escapeAttr(this.t('fEtaDate')) + '"></div>') +
+				this.formField(this.t('labelNote'), '<textarea class="form-control" id="e_note" rows="2">' + this.escape(this.getRowValue(row, ['Note']) || '') + '</textarea>', true) +
+				'</div>',
+			onOpen: () => {
+				const skuVal = String(this.getRowValue(row, ['Mã hàng', 'SKU']) || '');
+				const mappedProduct = this.state.products.find((p) => String(p.SKU || '').trim().toLowerCase() === skuVal.toLowerCase());
+				const productNameVal = mappedProduct ? String(mappedProduct['Tên hàng hóa'] || '').trim() : skuVal;
+				const statusVal = String(this.getRowValue(row, ['Status']) || 'Lên kế hoạch');
+				const fromVal = String(this.getRowValue(row, ['Nơi đi']) || '');
+				const toVal = String(this.getRowValue(row, ['Nơi đến']) || '');
+				const flockIdVal = String(this.getRowValue(row, ['FLOCK_ID', 'FLOCK ID', 'Flock ID']) || '');
+				const pickVal = this.toIsoDateInput(this.getRowValue(row, ['Ngày lấy hàng']));
+				const etaVal = this.toIsoDateInput(this.getRowValue(row, ['Ngày giao hàng (Dự kiến)']));
+				const skuEl = document.getElementById('e_sku');
+				const statusEl = document.getElementById('e_status');
+				const fromEl = document.getElementById('e_from');
+				const toEl = document.getElementById('e_to');
+				const flockEl = document.getElementById('e_flock_name');
+				const pickEl = document.getElementById('e_pick');
+				const etaEl = document.getElementById('e_eta');
+				if (skuEl) skuEl.value = productNameVal;
+				if (statusEl) statusEl.value = statusVal;
+				if (fromEl) fromEl.value = fromVal;
+				if (toEl) toEl.value = toVal;
+				if (flockEl) {
+					const allFlocks = this.state.configs.filter((c) => String(c.FLOCK_ID || '').trim() !== '');
+					const matchedFlock = allFlocks.find((c) => String(c.FLOCK_ID || '').trim() === flockIdVal);
+					const initialFlockName = matchedFlock ? String(matchedFlock.FLOCK_NAME || matchedFlock.FLOCK_ID || '').trim() : '';
+					const renderFlockOptions = () => {
+						flockEl.innerHTML = buildFlockOptions(toEl ? toEl.value : '', initialFlockName);
+					};
+					renderFlockOptions();
+					if (toEl) {
+						toEl.addEventListener('change', () => {
+							flockEl.innerHTML = buildFlockOptions(toEl.value, '');
+						});
+					}
+				}
+				if (pickEl) pickEl.value = pickVal;
+				if (etaEl) etaEl.value = etaVal;
+				this.bindDateDisplayProxy('e_pick', 'e_pick_display');
+				this.bindDateDisplayProxy('e_eta', 'e_eta_display');
+			},
+			onSubmit: async () => {
+				try {
+					ErpModal.setSubmitting(true);
+					const targetStatus = this.value('e_status');
+					const currentStatus = String(this.getRowValue(row, ['Status']) || '').trim();
+					const payload = {
+						Client: this.value('e_client'),
+						'Mã hàng': this.value('e_sku'),
+						'Số lượng': Number(this.value('e_qty')),
+						UOM: this.value('e_uom'),
+						'Nơi đi': this.value('e_from'),
+						'Nơi đến': this.value('e_to'),
+						FLOCK_NAME: this.value('e_flock_name'),
+						'Ngày lấy hàng': this.value('e_pick'),
+						'Ngày giao hàng (Dự kiến)': this.value('e_eta'),
+						Note: this.value('e_note')
+					};
+					await this.rpc('updateOrder', orderId, payload);
+					if (targetStatus && targetStatus !== currentStatus) {
+						await this.rpc('updateOrderStatus', orderId, targetStatus);
+					}
+					ErpModal.close();
+					this.toast(this.t('toastOrderUpdateOk'), 'success');
+					this.loadOms(true);
+					this.loadDashboard(true);
+				} catch (err) {
+					this.toast(err.message || this.t('toastOrderUpdateFailed'), 'error');
+				} finally {
+					ErpModal.setSubmitting(false);
+				}
+			}
+		});
+	},
+
+    /**
+    * Ghép các Order đang được tick chọn (checkbox trong bảng OMS) thành 1 lô
+    * TMS duy nhất — gọi createTmsIds() với đúng 1 nhóm.
+    */
+    mergeSelectedOrdersToTms: async function () {
+        const orderIds = Object.keys(this.state.omsSelectedIds || {});
+        if (orderIds.length === 0) return;
+        const ok = await ErpDialog.confirm({
+            title: this.t('confirmMergeSelectedTitle'),
+            message: this.formatT('confirmMergeSelectedMsg', { count: orderIds.length }),
+            type: 'info',
+            okLabel: this.t('btnOmsMergeSelectedLabel')
+        });
+        if (!ok) return;
+        try {
+            const resp = await this.rpc('createTmsIds', [orderIds]);
+            this.toast(this.formatT('toastTmsCreateOk', { count: (resp.data || []).length }), 'success');
+            this.clearOmsSelection();
+            this.loadOms(true);
+        } catch (err) {
+            this.toast(err.message || this.t('toastTmsCreateFailed'), 'error');
+        }
+    },
+
+		assignTmsForAllUnfinishedOrders: async function () {
+			const ok = await ErpDialog.confirm({
+				title: this.t('confirmAssignTmsAllTitle'),
+				message: this.t('confirmAssignTmsAllMsg'),
+				type: 'info',
+				okLabel: this.t('btnOmsAssignTmsAllLabel')
+			});
+			if (!ok) return;
+			try {
+				const resp = await this.rpc('createTmsIdsForUnfinishedOrders');
+				this.toast(this.formatT('toastTmsCreateOk', { count: (resp.data || []).length }), 'success');
+				this.clearOmsSelection();
+				this.loadOms(true);
+			} catch (err) {
+				this.toast(err.message || this.t('toastTmsCreateFailed'), 'error');
 			}
 		},
 
+    /**
+    * Modal gợi ý ghép đơn — gọi getOrderMergeSuggestions() (filter/group thuần
+    * JS ở BE, không phải hard rule), hiển thị từng nhóm kèm checkbox để user
+    * chọn nhóm nào muốn thực sự tạo TMS. User được tự do bỏ chọn nhóm không
+    * ưng ý — gợi ý không tự động ràng buộc gì.
+    */
+    openOrderMergeSuggestModal: async function () {
+        try {
+            const resp = await this.rpc('getOrderMergeSuggestions');
+            const groups = resp.data || [];
+
+            if (groups.length === 0) {
+                ErpModal.open({
+                    title: this.t('mergeSuggestTitle'),
+                    bodyHtml: '<div class="state-box"><span class="material-symbols-outlined">inbox</span><span>' + this.escape(this.t('mergeSuggestEmpty')) + '</span></div>',
+                    submitLabel: this.t('commonCancel')
+                });
+                document.getElementById('erpModalSubmitBtn').style.display = 'none';
+                return;
+            }
+
+            const groupsHtml = groups.map((g, idx) => {
+                const dest = (g.key && g.key['Nơi đến']) || '-';
+                const pickupDate = (g.key && g.key['Ngày lấy hàng']) || '-';
+                const weight = Number(g.totalWeightTon || 0).toFixed(2);
+                return '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer;">' +
+                    '<input type="checkbox" data-group-index="' + idx + '" checked style="margin-top:3px;">' +
+                    '<div>' +
+                    '<div style="font-weight:700;font-size:13px;">' + this.escape(this.formatT('mergeSuggestGroupLabel', { index: idx + 1 })) + '</div>' +
+                    '<div style="font-size:12px;color:#64748b;margin-top:2px;">' +
+                    this.escape(this.t('mergeSuggestDestination')) + ': ' + this.escape(dest) + ' &nbsp;|&nbsp; ' +
+                    this.escape(this.t('mergeSuggestPickupDate')) + ': ' + this.escape(pickupDate) + ' &nbsp;|&nbsp; ' +
+                    this.escape(this.t('mergeSuggestWeight')) + ': ' + weight +
+                    '</div>' +
+                    '<div style="font-size:12px;margin-top:4px;">' + this.escape(this.t('mergeSuggestOrders')) + ': ' + this.escape((g.orderIds || []).join(', ')) + '</div>' +
+                    '</div>' +
+                    '</label>';
+            }).join('');
+
+            ErpModal.open({
+                title: this.t('mergeSuggestTitle'),
+                size: 'lg',
+                submitLabel: this.t('btnCreateTmsSelectedGroups'),
+                bodyHtml: '<p style="font-size:12.5px;color:#64748b;margin-top:0;">' + this.escape(this.t('mergeSuggestDesc')) + '</p>' + groupsHtml,
+                onSubmit: async () => {
+                    const checked = Array.from(document.querySelectorAll('#erpModalBody input[data-group-index]:checked'));
+                    if (checked.length === 0) {
+                        this.toast(this.t('msgNoMergeSuggestGroupSelected'), 'warning');
+                        return;
+                    }
+                    const selectedGroups = checked.map((cb) => groups[Number(cb.dataset.groupIndex)].orderIds);
+                    try {
+                        ErpModal.setSubmitting(true);
+                        const resp = await this.rpc('createTmsIds', selectedGroups);
+                        ErpModal.close();
+                        this.toast(this.formatT('toastTmsCreateOk', { count: (resp.data || []).length }), 'success');
+                        this.clearOmsSelection();
+                        this.loadOms(true);
+                    } catch (err) {
+                        this.toast(err.message || this.t('toastTmsCreateFailed'), 'error');
+                    } finally {
+                        ErpModal.setSubmitting(false);
+                    }
+                }
+            });
+        } catch (err) {
+            this.toast(err.message || this.t('toastMergeSuggestFailed'), 'error');
+        }
+    },
+
 		loadWms: async function () {
-			const scope = document.getElementById('wmsScopeFilter').value;
+			const scopeFilter = document.getElementById('wmsScopeFilter');
+			if (scopeFilter) scopeFilter.value = 'farm';
+			const scope = 'farm';
 			const tenantId = document.getElementById('wmsTenantFilter').value;
 			const invBody = document.getElementById('wmsInventoryBody');
 			const txnBody = document.getElementById('wmsTxnBody');
@@ -489,17 +982,17 @@
 						'</tr>'
 					).join('');
 
-				document.getElementById('wmsTxnHead').innerHTML = '<tr><th>' + this.escape(this.t('hTenant')) + '</th><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hTxnType')) + '</th><th>' + this.escape(this.t('hIn')) + '</th><th>' + this.escape(this.t('hOut')) + '</th><th>' + this.escape(this.t('hDate')) + '</th></tr>';
+				document.getElementById('wmsTxnHead').innerHTML = '<tr><th>' + this.escape(this.t('hTenant')) + '</th><th>' + this.escape(this.t('hDate')) + '</th><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hTxnType')) + '</th><th>' + this.escape(this.t('hIn')) + '</th><th>' + this.escape(this.t('hOut')) + '</th></tr>';
 				txnBody.innerHTML = txns.length === 0
 					? '<tr><td colspan="6"><div class="state-box">' + this.escape(this.t('msgNoTransactions')) + '</div></td></tr>'
 					: txns.slice(0, 150).map((r) =>
 						'<tr>' +
 						'<td>' + this.escape(r.Tenant_id || '-') + '</td>' +
+						'<td>' + this.formatDate(r.DATE) + '</td>' +
 						'<td>' + this.escape(r.SKU || '-') + '</td>' +
 						'<td>' + this.escape(r['Loại giao dịch'] || '-') + '</td>' +
 						'<td>' + this.escape(String(r['Số lượng In'] || r.In_qtty || 0)) + '</td>' +
 						'<td>' + this.escape(String(r['Số lượng Out'] || r.Out_qtty || 0)) + '</td>' +
-						'<td>' + this.formatDate(r.DATE) + '</td>' +
 						'</tr>'
 					).join('');
 				this.state.loadedViews.wms = true;
@@ -512,9 +1005,12 @@
 		loadFms: async function () {
 			const flockId = document.getElementById('fmsFlockFilter').value;
 			if (!flockId) {
+				this.state.fmsLogRows = [];
+				this.state.fmsLogPage = 1;
 				document.getElementById('fmsSummaryCard').innerHTML = '<h3>' + this.escape(this.t('fmsSummaryTitle')) + '</h3><div class="state-box">' + this.escape(this.t('msgSelectFlockSummary')) + '</div>';
-				document.getElementById('fmsBody').innerHTML = '<tr><td colspan="7"><div class="state-box">' + this.escape(this.t('msgSelectFlockLog')) + '</div></td></tr>';
+				document.getElementById('fmsBody').innerHTML = '<tr><td colspan="6"><div class="state-box">' + this.escape(this.t('msgSelectFlockLog')) + '</div></td></tr>';
 				document.getElementById('fmsHead').innerHTML = '';
+				document.getElementById('fmsLogPagination').innerHTML = '';
 				this.drawLine('fmsPopulationChart', 'fmsPopulationEmpty', [[this.t('hAge'), this.t('chartActual'), this.t('chartEstimate')]]);
 				return;
 			}
@@ -544,25 +1040,136 @@
 				chartRows.unshift([this.t('hAge'), this.t('chartActual'), this.t('chartEstimate')]);
 				this.drawLine('fmsPopulationChart', 'fmsPopulationEmpty', chartRows);
 
-				const rows = rowsResp.data || [];
-				document.getElementById('fmsHead').innerHTML = '<tr><th>DATE</th><th>' + this.escape(this.t('hAge')) + '</th><th>' + this.escape(this.t('hFeedState')) + '</th><th>MORT_act</th><th>POP_ACT</th><th>POP_EST</th><th>' + this.escape(this.t('hThreshold')) + '</th></tr>';
-				document.getElementById('fmsBody').innerHTML = rows.length === 0
-					? '<tr><td colspan="7"><div class="state-box">' + this.escape(this.t('msgNoFmsData')) + '</div></td></tr>'
-					: rows.slice(0, 180).map((r) =>
-						'<tr>' +
-						'<td>' + this.formatDate(r.DATE) + '</td>' +
-						'<td>' + this.escape(String(r['Ngày Tuổi'] || '')) + '</td>' +
-						'<td>' + this.escape(r['FEED state'] || '') + '</td>' +
-						'<td>' + this.escape(String(r.MORT_act || '0')) + '</td>' +
-						'<td>' + this.escape(String(r.POPULATION_act || '')) + '</td>' +
-						'<td>' + this.escape(String(r.POPULATION_est || '')) + '</td>' +
-						'<td><span class="badge ' + this.badgeClass(r['Inventory Thresholds']) + '">' + this.escape(this.displayThreshold(r['Inventory Thresholds'] || '-')) + '</span></td>' +
-						'</tr>'
-					).join('');
+				const rows = (rowsResp.data || [])
+					.filter((r) => {
+						const age = Number(r['Ngày Tuổi']);
+						return Number.isFinite(age) && age >= 0 && age <= 125;
+					})
+					.slice()
+					.sort((a, b) => {
+						const ageDiff = Number(a['Ngày Tuổi']) - Number(b['Ngày Tuổi']);
+						if (ageDiff !== 0) return ageDiff;
+						return this.toUnixTime(a.DATE) - this.toUnixTime(b.DATE);
+					});
+				this.state.fmsLogRows = rows;
+				this.state.fmsLogPage = 1;
+				document.getElementById('fmsHead').innerHTML =
+					'<tr>' +
+					'<th>Date</th>' +
+					'<th>' + this.escape(this.t('hAge')) + '</th>' +
+					'<th>Gà chết</th>' +
+					'<th>Số lượng thực tế</th>' +
+					'<th>Số lượng ước tính</th>' +
+					'<th>Thức ăn tiêu thụ ước tính</th>' +
+					'</tr>';
+				this.renderFmsLogPage();
 				this.state.loadedViews.fms = true;
 			} catch (err) {
 				this.toast(err.message || this.t('toastFmsFailed'), 'error');
 			}
+		},
+
+		handleFmsLogPaginationClick: function (evt) {
+			const btn = evt.target.closest('[data-page]');
+			if (!btn) return;
+			const page = Number(btn.getAttribute('data-page'));
+			if (!Number.isFinite(page) || page < 1) return;
+			if (page === this.state.fmsLogPage) return;
+			this.state.fmsLogPage = page;
+			this.renderFmsLogPage();
+		},
+
+		sortFmsRowsBySeverity: function (rows) {
+			return rows.slice().sort((a, b) => {
+				const rankDiff = this.thresholdSeverityRank(b['Inventory Thresholds']) - this.thresholdSeverityRank(a['Inventory Thresholds']);
+				if (rankDiff !== 0) return rankDiff;
+				return this.toUnixTime(b.DATE) - this.toUnixTime(a.DATE);
+			});
+		},
+
+		thresholdSeverityRank: function (badge) {
+			const map = {
+				Critical: 5,
+				High: 4,
+				Low: 3,
+				Safe: 2,
+				Zero: 1
+			};
+			return map[String(badge || '')] || 0;
+		},
+
+		toUnixTime: function (value) {
+			if (!value) return 0;
+			const parsed = new Date(value).getTime();
+			if (Number.isFinite(parsed)) return parsed;
+			if (typeof value === 'string') {
+				const match = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+				if (match) {
+					const dd = Number(match[1]);
+					const mm = Number(match[2]);
+					const yyyy = Number(match[3]);
+					const fallback = new Date(yyyy, mm - 1, dd).getTime();
+					return Number.isFinite(fallback) ? fallback : 0;
+				}
+			}
+			return 0;
+		},
+
+		renderFmsLogPage: function () {
+			const rows = this.state.fmsLogRows || [];
+			const body = document.getElementById('fmsBody');
+			const pagination = document.getElementById('fmsLogPagination');
+			if (rows.length === 0) {
+				body.innerHTML = '<tr><td colspan="6"><div class="state-box">' + this.escape(this.t('msgNoFmsData')) + '</div></td></tr>';
+				pagination.innerHTML = '';
+				return;
+			}
+
+			const pageSize = Number(this.state.fmsLogPageSize) || 20;
+			const total = rows.length;
+			const totalPages = Math.max(1, Math.ceil(total / pageSize));
+			let page = Number(this.state.fmsLogPage) || 1;
+			if (page > totalPages) page = totalPages;
+			if (page < 1) page = 1;
+			this.state.fmsLogPage = page;
+
+			const start = (page - 1) * pageSize;
+			const end = Math.min(start + pageSize, total);
+			const pageRows = rows.slice(start, end);
+
+			body.innerHTML = pageRows.map((r) =>
+				'<tr>' +
+				'<td>' + this.formatDate(r.DATE) + '</td>' +
+				'<td>' + this.escape(String(r['Ngày Tuổi'] || '')) + '</td>' +
+				'<td>' + this.escape(String(r.MORT_act || 0)) + '</td>' +
+				'<td>' + this.escape(String(r.POPULATION_act || '')) + '</td>' +
+				'<td>' + this.escape(String(r.POPULATION_est || '')) + '</td>' +
+				'<td>' + this.escape(String(this.getRowValue(r, ['FEED_QTY_USE_est', 'FEED_est', 'FEED_USE_est', 'Feed_est']) || '')) + '</td>' +
+				'</tr>'
+			).join('');
+
+			const info = this.formatT('paginationInfo', {
+				from: start + 1,
+				to: end,
+				total: total
+			});
+
+			let startPage = Math.max(1, page - 2);
+			let endPage = Math.min(totalPages, startPage + 4);
+			startPage = Math.max(1, endPage - 4);
+
+			const pageButtons = [];
+			for (let p = startPage; p <= endPage; p++) {
+				pageButtons.push('<button class="page-btn ' + (p === page ? 'is-active' : '') + '" data-page="' + p + '">' + p + '</button>');
+			}
+
+			pagination.innerHTML =
+				'<div>' + this.escape(info) + '</div>' +
+				'<div class="pagination-controls">' +
+				'<button class="page-btn" data-page="' + (page - 1) + '" ' + (page <= 1 ? 'disabled' : '') + '>' + this.escape(this.t('pagePrev')) + '</button>' +
+				pageButtons.join('') +
+				'<button class="page-btn" data-page="' + (page + 1) + '" ' + (page >= totalPages ? 'disabled' : '') + '>' + this.escape(this.t('pageNext')) + '</button>' +
+				'</div>';
 		},
 
 		loadSetup: async function () {
@@ -672,6 +1279,7 @@
 					this.formField(this.t('fUom'), '<input class="form-control" id="m_uom" value="Bag">') +
 					this.formField(this.t('fFrom'), '<select class="form-control" id="m_from">' + locationOptions + '</select>') +
 					this.formField(this.t('fTo'), '<select class="form-control" id="m_to">' + locationOptions + '</select>') +
+					this.formField(this.t('fFlock'), '<select class="form-control" id="m_flock_name"></select>') +
 					this.formField(this.t('fPickupDate'), '<div class="date-proxy"><input class="form-control date-proxy-display" id="m_pick_display" type="text" placeholder="dd/mm/yyyy" readonly><input class="date-proxy-native" id="m_pick" type="date" aria-label="' + this.escapeAttr(this.t('fPickupDate')) + '"></div>') +
 					this.formField(this.t('fEtaDate'), '<div class="date-proxy"><input class="form-control date-proxy-display" id="m_eta_display" type="text" placeholder="dd/mm/yyyy" readonly><input class="date-proxy-native" id="m_eta" type="date" aria-label="' + this.escapeAttr(this.t('fEtaDate')) + '"></div>') +
 					this.formField(this.t('labelNote'), '<textarea class="form-control" id="m_note" rows="2"></textarea>', true) +
@@ -686,11 +1294,12 @@
 						const payload = {
 							Tenant_id: this.value('m_tenant'),
 							Client: this.value('m_client'),
-							'Mã hàng': selectedProduct ? String(selectedProduct.SKU || '') : selectedProductName,
+							'Mã hàng': selectedProduct ? String(selectedProduct['Tên hàng hóa'] || '') : selectedProductName,
 							'Số lượng': Number(this.value('m_qty')),
 							UOM: this.value('m_uom') || (selectedProduct ? String(selectedProduct.UOM || '') : '') || 'Bag',
 							'Nơi đi': this.value('m_from'),
 							'Nơi đến': this.value('m_to'),
+							FLOCK_NAME: this.value('m_flock_name'),
 							'Ngày lấy hàng': this.value('m_pick'),
 							'Ngày giao hàng (Dự kiến)': this.value('m_eta'),
 							Note: this.value('m_note')
@@ -709,6 +1318,28 @@
 			});
 
 			setTimeout(() => {
+				const toEl = document.getElementById('m_to');
+				const flockEl = document.getElementById('m_flock_name');
+				const renderCreateFlockOptions = () => {
+					if (!flockEl) return;
+					const destination = toEl ? toEl.value : '';
+					const normalizedDest = String(destination || '').trim().toLowerCase();
+					const allFlocks = this.state.configs.filter((c) => String(c.FLOCK_ID || '').trim() !== '');
+					const scoped = allFlocks.filter((c) => String(c.Tenant || '').trim().toLowerCase() === normalizedDest);
+					const source = scoped.length > 0 ? scoped : allFlocks;
+					flockEl.innerHTML = ['<option value="">' + this.escape(this.t('selectFlock')) + '</option>']
+						.concat(source.map((c) => {
+							const flockName = String(c.FLOCK_NAME || c.FLOCK_ID || '').trim();
+							const flockId = String(c.FLOCK_ID || '').trim();
+							const tenantName = String(c.Tenant || '').trim();
+							return '<option value="' + this.escapeAttr(flockName) + '">' +
+								this.escape(flockName + ' (' + flockId + ')' + (tenantName ? ' - ' + tenantName : '')) +
+							'</option>';
+						}))
+						.join('');
+				};
+				renderCreateFlockOptions();
+				if (toEl) toEl.addEventListener('change', renderCreateFlockOptions);
 				this.bindDateDisplayProxy('m_pick', 'm_pick_display');
 				this.bindDateDisplayProxy('m_eta', 'm_eta_display');
 			}, 0);
@@ -746,7 +1377,7 @@
 							scope: this.value('tx_scope'),
 							type: type,
 							Tenant_id: this.value('tx_tenant'),
-							SKU: selectedProduct ? String(selectedProduct.SKU || '') : selectedProductName,
+							SKU: selectedProduct ? String(selectedProduct['Tên hàng hóa'] || '') : selectedProductName,
 							qty: Number(this.value('tx_qty')),
 							FLOCK_ID: this.value('tx_flock'),
 							note: this.value('tx_note')
@@ -813,7 +1444,7 @@
 						await this.rpc('submitAdjustment', {
 							scope: this.value('aj_scope'),
 							Tenant_id: this.value('aj_tenant'),
-							SKU: selectedProduct ? String(selectedProduct.SKU || '') : selectedProductName,
+							SKU: selectedProduct ? String(selectedProduct['Tên hàng hóa'] || '') : selectedProductName,
 							deltaQty: Number(this.value('aj_delta')),
 							reason: this.value('aj_reason'),
 							FLOCK_ID: this.value('aj_flock'),
@@ -920,7 +1551,7 @@
 		},
 
 		openSetupPolicyModal: function () {
-			const skuOptions = this.state.products.map((p) => '<option value="' + this.escapeAttr(p.SKU || '') + '"></option>').join('');
+			const skuOptions = this.state.products.map((p) => '<option value="' + this.escapeAttr(p['Tên hàng hóa'] || '') + '"></option>').join('');
 			ErpModal.open({
 				title: this.t('setupPolicyBtn'),
 				bodyHtml:
@@ -1161,6 +1792,26 @@
 			syncDisplay();
 		},
 
+		toIsoDateInput: function (value) {
+			if (!value) return '';
+			const d = new Date(value);
+			if (isNaN(d.getTime())) return '';
+			const yyyy = d.getFullYear();
+			const mm = String(d.getMonth() + 1).padStart(2, '0');
+			const dd = String(d.getDate()).padStart(2, '0');
+			return yyyy + '-' + mm + '-' + dd;
+		},
+
+		isFutureDate: function (value) {
+			if (!value) return false;
+			const d = new Date(value);
+			if (isNaN(d.getTime())) return false;
+			d.setHours(0, 0, 0, 0);
+			const today = new Date();
+			today.setHours(0, 0, 0, 0);
+			return d.getTime() > today.getTime();
+		},
+
 		getRowValue: function (row, candidateKeys) {
 			if (!row || !candidateKeys || candidateKeys.length === 0) return '';
 			for (let i = 0; i < candidateKeys.length; i++) {
@@ -1195,48 +1846,35 @@
 			return map[badge] || 'badge-empty';
 		},
 
-		normalizeOrderStatus: function (status) {
-			const raw = String(status || '').trim();
-			if (!raw) return '';
-
-			const normalized = raw.toLowerCase()
-				.normalize('NFD')
-				.replace(/[\u0300-\u036f]/g, '');
-
-			if (normalized === 'cho xu ly' || normalized === 'waiting for processing') return 'Cho xu ly';
-			if (normalized === 'cho giao' || normalized === 'pending' || normalized === 'len ke hoach' || normalized === 'planning') return 'Chờ giao';
-			if (normalized === 'da tru kho' || normalized === 'stock deducted') return 'Đã trừ kho';
-			if (normalized === 'hoan tat' || normalized === 'completed') return 'Hoan tat';
-			if (normalized === 'loi - can xu ly thu cong' || normalized === 'error - manual handling required') return 'Lỗi - cần xử lý thủ công';
-			return raw;
-		},
-
 		orderStatusClass: function (status) {
-			const normalized = this.normalizeOrderStatus(status);
-			if (normalized === 'Chờ giao') return 'badge-order-pending';
-			if (normalized === 'Đã trừ kho') return 'badge-order-deducted';
-			if (normalized === 'Hoan tat') return 'badge-order-completed';
+			if (status === 'Lên kế hoạch') return 'badge-order-pending';
+			if (status === 'Đã lấy hàng') return 'badge-order-deducted';
+			if (status === 'Chờ giao hàng') return 'badge-order-deducted';
+			if (status === 'Hoan tat') return 'badge-order-completed';
+			if (status === 'Hoàn tất') return 'badge-order-completed';
 			return 'badge-order-error';
 		},
 
 		orderStatusColor: function (status) {
-			const normalized = this.normalizeOrderStatus(status);
-			if (normalized === 'Cho xu ly') return '#d55053';
-			if (normalized === 'Chờ giao') return '#d55053';
-			if (normalized === 'Đã trừ kho') return '#5bb1de';
-			if (normalized === 'Hoan tat') return '#8abda2';
-			if (normalized === 'Lỗi - cần xử lý thủ công') return '#fca5a5';
+			if (status === 'Lên kế hoạch' || status === 'Planning') return '#d55053';
+			if (status === 'Đã lấy hàng' || status === 'Picked up') return '#5bb1de';
+			if (status === 'Chờ giao hàng' || status === 'In transit') return '#245d4b';
+			if (status === 'Hoan tat') return '#8abda2';
+			if (status === 'Hoàn tất' || status === 'Completed') return '#8abda2';
 			return '#64748b';
 		},
 
 		displayOrderStatus: function (status) {
-			const normalized = this.normalizeOrderStatus(status);
-			if (normalized === 'Cho xu ly') return this.t('statusProcessing');
-			if (normalized === 'Chờ giao') return this.t('statusPending');
-			if (normalized === 'Đã trừ kho') return this.t('statusDeducted');
-			if (normalized === 'Hoan tat') return this.t('statusCompleted');
-			if (normalized === 'Lỗi - cần xử lý thủ công') return this.t('statusError');
-			return normalized || '-';
+			if (status === 'Lên kế hoạch') return this.t('statusPlanned');
+			if (status === 'Đã lấy hàng') return this.t('statusPickedUp');
+			if (status === 'Chờ giao hàng') return this.t('statusInTransit');
+			if (status === 'Hoan tat') return this.t('statusCompleted');
+			if (status === 'Hoàn tất') return this.t('statusCompleted');
+			if (status === 'Planning') return this.t('statusPlanned');
+			if (status === 'Picked up') return this.t('statusPickedUp');
+			if (status === 'In transit') return this.t('statusInTransit');
+			if (status === 'Completed') return this.t('statusCompleted');
+			return status || '-';
 		},
 
 		displayThreshold: function (badge) {
