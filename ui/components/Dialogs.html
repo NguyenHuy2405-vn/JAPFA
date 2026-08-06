@@ -1,0 +1,82 @@
+<!--
+  FILE: Components/Dialogs.html
+  PURPOSE: Confirm dialog dùng chung — 2 use-case chính:
+           1) Xác nhận hành động nguy hiểm (đổi Status, Adjustment âm lớn...)
+           2) Xác nhận "cập nhật dòng đã có?" khi backend trả DUPLICATE_KEY
+              (đúng rule Validation.gs checkDuplicateKey/checkDuplicateCompositeKey).
+  DEPENDENCIES: style.css
+-->
+<div class="modal-overlay" id="confirmDialogOverlay">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="modal-body" style="text-align:center;padding-top:24px;">
+      <div class="confirm-icon" id="confirmDialogIcon">
+        <span class="material-symbols-outlined">warning</span>
+      </div>
+      <h3 id="confirmDialogTitle" style="margin:0 0 8px;font-size:15.5px;">Xác nhận hành động</h3>
+      <p id="confirmDialogMessage" style="margin:0;font-size:13px;color:#64748b;">Bạn có chắc chắn?</p>
+    </div>
+    <div class="modal-footer" style="justify-content:center;">
+      <button class="btn btn-ghost" id="confirmDialogCancelBtn" onclick="ErpDialog.cancel()">Hủy</button>
+      <button class="btn btn-primary" id="confirmDialogOkBtn">Xác nhận</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  /**
+   * ErpDialog — confirm dialog Promise-based, dùng cho mọi flow cần "Bạn có chắc?"
+   * @example
+   * const ok = await ErpDialog.confirm({
+   *   title: 'Đổi trạng thái Order',
+   *   message: 'Xác nhận chuyển đơn sang "Hoan tat"?',
+   *   type: 'info'
+   * });
+   * if (ok) { ... gọi updateOrderStatus ... }
+   *
+   * @example DUPLICATE_KEY flow (SetupService)
+   * const confirmed = await ErpDialog.confirm({
+   *   title: 'Tenant đã tồn tại',
+   *   message: 'Khoá "WMS_2" đã tồn tại. Cập nhật dòng đã có?',
+   *   type: 'warning', okLabel: 'Cập nhật'
+   * });
+   * if (confirmed) payload.__confirmUpdate = true;
+   */
+  const ErpDialog = {
+    _resolve: null,
+
+    _t: function (key, fallback) {
+      if (window.App && typeof window.App.t === 'function') return window.App.t(key);
+      return fallback;
+    },
+
+    confirm: function (cfg) {
+      document.getElementById('confirmDialogTitle').textContent = cfg.title || this._t('commonConfirm', 'Xác nhận hành động');
+      document.getElementById('confirmDialogMessage').textContent = cfg.message || this._t('commonConfirm', 'Bạn có chắc chắn?');
+      const okBtn = document.getElementById('confirmDialogOkBtn');
+      okBtn.textContent = cfg.okLabel || this._t('commonConfirm', 'Xác nhận');
+      document.getElementById('confirmDialogCancelBtn').textContent = this._t('commonCancel', 'Hủy');
+      okBtn.className = 'btn ' + (cfg.type === 'danger' ? 'btn-danger' : 'btn-primary');
+
+      const icon = document.getElementById('confirmDialogIcon');
+      icon.className = 'confirm-icon' + (cfg.type === 'info' || cfg.type === 'warning' ? ' confirm-info' : '');
+      icon.querySelector('span').textContent = cfg.type === 'danger' ? 'delete' : (cfg.type === 'warning' ? 'help' : 'info');
+
+      document.getElementById('confirmDialogOverlay').classList.add('is-open');
+
+      return new Promise((resolve) => {
+        this._resolve = resolve;
+        okBtn.onclick = () => { this._close(); resolve(true); };
+      });
+    },
+
+    cancel: function () {
+      this._close();
+      if (this._resolve) this._resolve(false);
+    },
+
+    _close: function () {
+      document.getElementById('confirmDialogOverlay').classList.remove('is-open');
+      this._resolve = null;
+    }
+  };
+</script>

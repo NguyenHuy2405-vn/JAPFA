@@ -1,0 +1,46 @@
+<!--
+  FILE: Components/Tables.html
+  PURPOSE: Generic data table shell dùng cho mọi page (OMS/WMS/FMS/Setup).
+           Page-specific JS (OMS.js/WMS.js...) tự render <thead>/<tbody>
+           bằng cách gọi ErpTable.render(containerId, {columns, rows, actions}).
+  DEPENDENCIES: style.css, Components/Loading.html, Components/Dialogs.html
+-->
+<template id="tpl-table-shell">
+  <div class="card" style="padding:0;overflow:hidden;">
+    <div style="padding:12px 14px;border-bottom:1px solid var(--line);" class="filter-bar" data-slot="toolbar"></div>
+    <div class="table-wrap">
+      <table class="erp-table">
+        <thead data-slot="thead"></thead>
+        <tbody data-slot="tbody">
+          <tr><td colspan="99"><div class="state-box"><span class="material-symbols-outlined">hourglass_top</span><span>Đang tải dữ liệu...</span></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination-bar" data-slot="pagination" style="padding:10px 14px;"></div>
+  </div>
+</template>
+
+<template id="tpl-table-empty">
+  <tr>
+    <td colspan="99">
+      <div class="state-box">
+        <span class="material-symbols-outlined">inbox</span>
+        <span>Không có dữ liệu phù hợp.</span>
+      </div>
+    </td>
+  </tr>
+</template>
+
+<template id="tpl-table-error">
+  <tr>
+    <td colspan="99">
+      <div class="state-box" style="color:#b3261e;">
+        <span class="material-symbols-outlined">error</span>
+        <span class="err-msg">Không thể tải dữ liệu. Vui lòng thử lại.</span>
+        <button class="btn btn-outline btn-sm" data-action="retry" style="margin-top:6px;">
+          <span class="material-symbols-outlined">refresh</span> Thử lại
+        </button>
+      </div>
+    </td>
+  </tr>
+</template>
