@@ -140,12 +140,6 @@ function createOrder(payload) {
     try {
       orderResult = _appendOmsRow_(payload);
       const orderId = orderResult.orderId;
-      if (!orderId) {
-        throw new Error(
-          "ORDER_ID_GENERATION_FAILED::Không thể sinh Order ID từ công thức trên sheet OMS. " +
-            "Kiểm tra lại cột Order ID (Order ID/WMS_Order ID/TMS_ORDER ID).",
-        );
-      }
 
       try {
         const outboundResp = submitInboundOutbound({
@@ -442,9 +436,29 @@ function _resolveLocationScope_(locationName) {
     .toLowerCase();
 
   if (["nhà máy", "nha may", "factory"].indexOf(normalizedLocation) !== -1) {
-    const factoryRow = configRows.find(function (r) {
+    const factoryRows = configRows.filter(function (r) {
       return !r["FLOCK_ID"];
     });
+    const factoryLedgerTenants = {};
+    getSheetData_("WMS_FACTORY").forEach(function (r) {
+      const t = String(r["Tenant_id"] || "").trim();
+      if (t) factoryLedgerTenants[t] = true;
+    });
+
+    let factoryRow = factoryRows.find(function (r) {
+      return factoryLedgerTenants[String(r["Tenant_id"] || "").trim()];
+    });
+    if (!factoryRow) {
+      factoryRow = factoryRows.find(function (r) {
+        const managedBy = String(r["Managed by"] || "").toLowerCase();
+        return (
+          managedBy.indexOf("factory") !== -1 ||
+          managedBy.indexOf("nhà máy") !== -1 ||
+          managedBy.indexOf("nha may") !== -1
+        );
+      });
+    }
+    if (!factoryRow && factoryRows.length > 0) factoryRow = factoryRows[0];
     if (factoryRow) {
       return {
         scope: "factory",

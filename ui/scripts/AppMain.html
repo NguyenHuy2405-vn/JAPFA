@@ -325,10 +325,18 @@
 					'</div>'
 				).join('');
 
-				const chartData = [[this.t('hStatus'), this.t('hCount')]];
-				const chartColors = [];
+				const aggregatedStatusCounts = {};
 				Object.keys(statusCounts).forEach((k) => {
 					const value = Number(statusCounts[k]) || 0;
+					if (value <= 0) return;
+					const normalized = this.normalizeOrderStatus(k);
+					aggregatedStatusCounts[normalized] = (aggregatedStatusCounts[normalized] || 0) + value;
+				});
+
+				const chartData = [[this.t('hStatus'), this.t('hCount')]];
+				const chartColors = [];
+				Object.keys(aggregatedStatusCounts).forEach((k) => {
+					const value = Number(aggregatedStatusCounts[k]) || 0;
 					if (value <= 0) return;
 					chartData.push([this.displayOrderStatus(k), value]);
 					chartColors.push(this.orderStatusColor(k));
@@ -1187,35 +1195,48 @@
 			return map[badge] || 'badge-empty';
 		},
 
+		normalizeOrderStatus: function (status) {
+			const raw = String(status || '').trim();
+			if (!raw) return '';
+
+			const normalized = raw.toLowerCase()
+				.normalize('NFD')
+				.replace(/[\u0300-\u036f]/g, '');
+
+			if (normalized === 'cho xu ly' || normalized === 'waiting for processing') return 'Cho xu ly';
+			if (normalized === 'cho giao' || normalized === 'pending' || normalized === 'len ke hoach' || normalized === 'planning') return 'Chờ giao';
+			if (normalized === 'da tru kho' || normalized === 'stock deducted') return 'Đã trừ kho';
+			if (normalized === 'hoan tat' || normalized === 'completed') return 'Hoan tat';
+			if (normalized === 'loi - can xu ly thu cong' || normalized === 'error - manual handling required') return 'Lỗi - cần xử lý thủ công';
+			return raw;
+		},
+
 		orderStatusClass: function (status) {
-			if (status === 'Chờ giao') return 'badge-order-pending';
-			if (status === 'Đã trừ kho') return 'badge-order-deducted';
-			if (status === 'Hoan tat') return 'badge-order-completed';
+			const normalized = this.normalizeOrderStatus(status);
+			if (normalized === 'Chờ giao') return 'badge-order-pending';
+			if (normalized === 'Đã trừ kho') return 'badge-order-deducted';
+			if (normalized === 'Hoan tat') return 'badge-order-completed';
 			return 'badge-order-error';
 		},
 
 		orderStatusColor: function (status) {
-			if (status === 'Cho xu ly' || status === 'Chờ xử lý' || status === 'Waiting for processing') return '#d55053';
-			if (status === 'Chờ giao' || status === 'Pending') return '#d55053';
-			if (status === 'Đã trừ kho' || status === 'Stock deducted') return '#5bb1de';
-			if (status === 'Hoan tat' || status === 'Completed') return '#8abda2';
-			if (status === 'Lỗi - cần xử lý thủ công' || status === 'Error - manual handling required') return '#fca5a5';
+			const normalized = this.normalizeOrderStatus(status);
+			if (normalized === 'Cho xu ly') return '#d55053';
+			if (normalized === 'Chờ giao') return '#d55053';
+			if (normalized === 'Đã trừ kho') return '#5bb1de';
+			if (normalized === 'Hoan tat') return '#8abda2';
+			if (normalized === 'Lỗi - cần xử lý thủ công') return '#fca5a5';
 			return '#64748b';
 		},
 
 		displayOrderStatus: function (status) {
-			if (status === 'Cho xu ly') return this.t('statusProcessing');
-			if (status === 'Waiting for processing') return this.t('statusProcessing');
-			if (status === 'Chờ xử lý') return this.t('statusProcessing');
-			if (status === 'Chờ giao') return this.t('statusPending');
-			if (status === 'Đã trừ kho') return this.t('statusDeducted');
-			if (status === 'Hoan tat') return this.t('statusCompleted');
-			if (status === 'Pending') return this.t('statusPending');
-			if (status === 'Stock deducted') return this.t('statusDeducted');
-			if (status === 'Completed') return this.t('statusCompleted');
-			if (status === 'Lỗi - cần xử lý thủ công') return this.t('statusError');
-			if (status === 'Error - manual handling required') return this.t('statusError');
-			return status || '-';
+			const normalized = this.normalizeOrderStatus(status);
+			if (normalized === 'Cho xu ly') return this.t('statusProcessing');
+			if (normalized === 'Chờ giao') return this.t('statusPending');
+			if (normalized === 'Đã trừ kho') return this.t('statusDeducted');
+			if (normalized === 'Hoan tat') return this.t('statusCompleted');
+			if (normalized === 'Lỗi - cần xử lý thủ công') return this.t('statusError');
+			return normalized || '-';
 		},
 
 		displayThreshold: function (badge) {

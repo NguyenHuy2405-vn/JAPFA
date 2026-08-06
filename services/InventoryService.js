@@ -282,13 +282,25 @@ function getCurrentStock_(scope, tenantId, sku) {
  */
 function resolveLedgerSkuKey_(scope, tenantId, sku) {
   const sheetKey = scope === "factory" ? "WMS_FACTORY" : "WMS_FARM";
-  const rows = getSheetData_(sheetKey).filter(function (r) {
-    return (
-      tenantIdEquals_(r["Tenant_id"], tenantId) && skuEquals_(r["SKU"], sku)
-    );
+  const normalizedTarget = normalizeSku_(sku);
+  const tenantRows = getSheetData_(sheetKey).filter(function (r) {
+    return tenantIdEquals_(r["Tenant_id"], tenantId);
   });
-  if (rows.length === 0) return sku;
-  const latest = rows.reduce(function (a, b) {
+  if (tenantRows.length === 0) return sku;
+
+  // Ưu tiên khớp CHÍNH XÁC SKU trước để tránh map nhầm sang biến thể khác.
+  const exactRows = tenantRows.filter(function (r) {
+    return normalizeSku_(r["SKU"]) === normalizedTarget;
+  });
+  const candidateRows =
+    exactRows.length > 0
+      ? exactRows
+      : tenantRows.filter(function (r) {
+          return skuEquals_(r["SKU"], sku);
+        });
+
+  if (candidateRows.length === 0) return sku;
+  const latest = candidateRows.reduce(function (a, b) {
     return b.__row > a.__row ? b : a;
   });
   return latest["SKU"] || sku;
