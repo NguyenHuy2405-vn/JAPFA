@@ -233,16 +233,29 @@ font-size: 13px;
 .grid-2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; }
 
 .dashboard-grid {
-grid-template-columns: 1.28fr 1.02fr;
+grid-template-columns: 1.45fr 0.85fr;
 align-items: start;
 }
 
 .dashboard-chart-card {
-padding: 12px;
+padding: 10px 12px;
 }
 
 .dashboard-alert-card {
 padding: 12px;
+}
+
+#dashboardOrderPie {
+height: 245px;
+}
+
+.dashboard-alert-card .table-wrap {
+overflow-x: hidden;
+}
+
+#dashboardAlertTable thead th,
+#dashboardAlertTable tbody td {
+white-space: normal;
 }
 
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
