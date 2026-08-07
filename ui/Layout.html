@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>JAPFA Poultry Control Tower</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link
+		href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Sora:wght@500;700&display=swap"
+		rel="stylesheet">
+	<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+		rel="stylesheet">
+	<script src="https://www.gstatic.com/charts/loader.js"></script>
+	<style>
+		<?!=include('ui/assets/style') ?>
+	</style>
+</head>
+
+<body>
+	<?!= include('ui/components/Cards') ?>
+	<?!= include('ui/components/Charts') ?>
+	<?!= include('ui/components/Tables') ?>
+	<?!= include('ui/components/Loading') ?>
+
+	<div class="app-shell">
+		<header class="topbar">
+			<div class="brand">
+				<div class="brand-mark"><img id="brandLogo" class="brand-logo" alt="JAPFA logo"></div>
+				<div>
+					<h1 class="brand-title" id="brandTitle">JAPFA Poultry Control Tower</h1>
+					<p class="brand-sub" id="brandContext">Hệ thống giám sát vận hành feed logistics theo thời gian thực
+					</p>
+				</div>
+			</div>
+			<div class="topbar-actions">
+				<div class="lang-switch" id="langSwitch">
+					<button class="btn btn-outline btn-lang" id="btnLang" type="button" aria-haspopup="true"
+						aria-expanded="false">
+						<span class="material-symbols-outlined">translate</span>
+						<span id="langCurrent">VI</span>
+					</button>
+					<div class="lang-menu" id="langMenu">
+						<button class="lang-option" type="button" data-lang="vi">Tiếng Việt</button>
+						<button class="lang-option" type="button" data-lang="en">English</button>
+					</div>
+				</div>
+				<div class="user-chip" id="userChip"><span class="material-symbols-outlined">person</span> Đang tải
+					người dùng...</div>
+			</div>
+		</header>
+
+		<nav class="nav-tabs" id="mainTabs">
+			<button class="nav-tab is-active" data-view="dashboard"><span
+					class="material-symbols-outlined">monitoring</span><span
+					id="navDashboardLabel">Dashboard</span></button>
+			<button class="nav-tab" data-view="oms"><span class="material-symbols-outlined">receipt_long</span><span
+					id="navOmsLabel">OMS</span></button>
+			<button class="nav-tab" data-view="wms"><span class="material-symbols-outlined">warehouse</span><span
+					id="navWmsLabel">WMS</span></button>
+			<button class="nav-tab" data-view="fms"><span class="material-symbols-outlined">egg</span><span
+					id="navFmsLabel">FMS</span></button>
+			<button class="nav-tab" data-view="setup"><span class="material-symbols-outlined">settings</span><span
+					id="navSetupLabel">Setup</span></button>
+		</nav>
+
+		<main class="view-stack">
+			<section class="view is-active" id="view-dashboard">
+				<div class="view-head">
+					<div>
+						<h2 id="dashboardTitle">Operational Dashboard</h2>
+						<p id="dashboardDesc">Tổng hợp nhanh tồn kho, trạng thái đơn hàng và cảnh báo FMS.</p>
+					</div>
+				</div>
+				<div class="kpi-grid" id="dashboardKpis"></div>
+				<div class="grid-2 dashboard-grid" style="margin-top:12px">
+					<div class="card dashboard-alert-card">
+						<div class="view-head" style="margin-bottom:8px;align-items:center;">
+							<h3 id="dashboardAlertTitle" style="margin:0;">Cảnh báo sắp hết cám (FMS)</h3>
+							<div style="min-width:190px;">
+								<label class="form-label" id="dashboardAlertFarmFilterLabel"
+									style="display:block;margin-bottom:4px;">Flock</label>
+								<select class="form-control" id="dashboardAlertFarmFilter"></select>
+							</div>
+						</div>
+						<div class="table-wrap">
+							<table class="erp-table" id="dashboardAlertTable">
+								<thead id="dashboardAlertHead"></thead>
+								<tbody id="dashboardAlertBody"></tbody>
+							</table>
+						</div>
+						<div class="pagination-bar" id="dashboardAlertPagination"></div>
+					</div>
+					<div class="card dashboard-chart-card">
+						<h3 id="dashboardOrderPieTitle">Tỷ trọng trạng thái đơn hàng</h3>
+						<div id="dashboardOrderPie"></div>
+						<div class="state-box" id="dashboardOrderPieEmpty" style="display:none;"><span
+								class="material-symbols-outlined">pie_chart</span><span
+								id="dashboardOrderPieEmptyText">Chưa có dữ liệu đơn hàng</span>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<section class="view" id="view-oms">
+				<div class="view-head">
+					<div>
+						<h2 id="omsTitle">OMS - Quản lý đơn hàng</h2>
+						<p id="omsDesc">Tạo đơn 2 chiều Nhà máy và Farm, theo dõi trạng thái và truy vết.</p>
+					</div>
+					<div class="inline-fields">
+						<button class="btn btn-outline" id="btnOmsMergeSuggest"><span
+								class="material-symbols-outlined">route</span><span id="btnOmsMergeSuggestLabel">Gợi ý
+								ghép đơn</span></button>
+						<button class="btn btn-outline" id="btnOmsAssignTmsAll"><span
+								class="material-symbols-outlined">auto_awesome</span><span
+								id="btnOmsAssignTmsAllLabel">Tạo TMS cho đơn chưa hoàn thành</span></button>
+						<button class="btn btn-primary" id="btnCreateOrder"><span
+								class="material-symbols-outlined">add_circle</span><span id="btnCreateOrderLabel">Tạo
+								Order</span></button>
+					</div>
+				</div>
+				<div class="card" style="padding:10px;">
+					<div class="filter-bar" style="align-items:flex-end;">
+						<select class="form-control" id="omsStatusFilter">
+							<option value="" id="omsStatusAllOption">Tất cả trạng thái</option>
+							<option value="Lên kế hoạch" id="omsStatusPlannedOption">Lên kế hoạch</option>
+							<option value="Đã lấy hàng" id="omsStatusPickedOption">Đã lấy hàng</option>
+							<option value="Chờ giao hàng" id="omsStatusTransitOption">Chờ giao hàng</option>
+							<option value="Hoàn tất" id="omsStatusCompletedOption">Hoàn tất</option>
+						</select>
+						<div class="search-box">
+							<span class="material-symbols-outlined">search</span>
+							<input class="form-control" id="omsSearch" placeholder="Tìm theo Order ID / Client / SKU">
+						</div>
+						<button class="btn btn-outline" id="btnOmsRefresh"><span
+								class="material-symbols-outlined">refresh</span><span id="btnOmsRefreshLabel">Tải
+								lại</span></button>
+					</div>
+					<div class="filter-bar" id="omsMergeToolbar" style="margin-top:8px;display:none;">
+						<span class="toolbar-note" id="omsMergeSelectedCount">Đã chọn 0 đơn</span>
+						<button class="btn btn-primary btn-sm" id="btnOmsMergeSelected"><span
+								class="material-symbols-outlined">merge</span><span id="btnOmsMergeSelectedLabel">Ghép
+								thành 1 lô TMS</span></button>
+						<button class="btn btn-ghost btn-sm" id="btnOmsClearSelection">Bỏ chọn</button>
+					</div>
+				</div>
+				<div class="card" style="padding:0;margin-top:10px;">
+					<div class="table-wrap">
+						<table class="erp-table">
+							<thead id="omsHead"></thead>
+							<tbody id="omsBody"></tbody>
+						</table>
+					</div>
+				</div>
+				<section class="card" style="padding:0;margin-top:10px;" id="omsFactoryCard">
+					<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+						<h3 style="margin:0;" id="omsFactoryTitle">WMS Nhà máy</h3>
+					</div>
+					<div style="padding:10px;display:grid;grid-template-columns:1fr;gap:12px;">
+						<div class="card" style="padding:0;">
+							<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+								<h3 style="margin:0;" id="omsFactoryInventoryTitle">Tồn kho nhà máy</h3>
+							</div>
+							<div class="table-wrap">
+								<table class="erp-table">
+									<thead id="omsFactoryInventoryHead"></thead>
+									<tbody id="omsFactoryInventoryBody"></tbody>
+								</table>
+							</div>
+						</div>
+						<div class="card" style="padding:0;">
+							<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+								<h3 style="margin:0;" id="omsFactoryTxnTitle">Giao dịch nhà máy gần nhất</h3>
+							</div>
+							<div class="table-wrap">
+								<table class="erp-table">
+									<thead id="omsFactoryTxnHead"></thead>
+									<tbody id="omsFactoryTxnBody"></tbody>
+								</table>
+							</div>
+						</div>
+					</div>
+				</section>
+			</section>
+
+			<section class="view" id="view-wms">
+				<div class="view-head">
+					<div>
+						<h2 id="wmsTitle">WMS Farm - Tồn kho và giao dịch</h2>
+						<p id="wmsDesc">Dành cho kỹ thuật Farm: theo dõi tồn kho farm, nhập xuất tay và adjustment.</p>
+					</div>
+				</div>
+				<div class="card" style="padding:10px;">
+					<div class="filter-bar">
+						<div style="min-width:220px;">
+							<label class="form-label" id="wmsFarmFilterLabel" style="display:block;margin-bottom:4px;">Farm</label>
+							<select class="form-control" id="wmsFarmFilter"></select>
+						</div>
+						<div style="min-width:220px;">
+							<label class="form-label" id="wmsFlockFilterLabel" style="display:block;margin-bottom:4px;">Flock</label>
+							<select class="form-control" id="wmsFlockFilter"></select>
+						</div>
+						<button class="btn btn-outline" id="btnWmsRefresh"><span
+								class="material-symbols-outlined">refresh</span><span id="btnWmsRefreshLabel">Tải
+								lại</span></button>
+					</div>
+				</div>
+				<div style="margin-top:10px;display:grid;grid-template-columns:1fr;gap:12px;">
+					<div class="card" style="padding:0;">
+						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+							<h3 style="margin:0;" id="wmsInventoryTitle">Current Inventory</h3>
+						</div>
+						<div class="table-wrap">
+							<table class="erp-table" id="wmsCurrentInfoTable">
+								<thead id="wmsCurrentInfoHead"></thead>
+								<tbody id="wmsCurrentInfoBody"></tbody>
+							</table>
+						</div>
+						<div style="padding:12px 14px;border-top:1px solid var(--line);text-align:right;">
+							<button class="btn btn-primary" id="btnWmsCreateOrder"><span class="material-symbols-outlined">add_shopping_cart</span><span id="btnWmsCreateOrderLabel">Create Order</span></button>
+						</div>
+					</div>
+					<div class="card" style="padding:0;">
+						<div class="filter-bar" style="padding:12px 14px;border-bottom:1px solid var(--line);align-items:center;justify-content:space-between;">
+							<h3 style="margin:0;" id="wmsTxnTitle">Feed Inventory Log</h3>
+							<div class="inline-fields">
+								<button class="btn btn-outline" id="btnWmsInbound"><span class="material-symbols-outlined">move_down</span><span id="btnWmsInboundLabel">Inbound</span></button>
+								<button class="btn btn-outline" id="btnWmsOutbound"><span class="material-symbols-outlined">move_up</span><span id="btnWmsOutboundLabel">Outbound</span></button>
+								<button class="btn btn-primary" id="btnWmsAdjust"><span class="material-symbols-outlined">tune</span><span id="btnWmsAdjustLabel">Adjustment</span></button>
+							</div>
+						</div>
+						<div class="table-wrap">
+							<table class="erp-table">
+								<thead id="wmsTxnHead"></thead>
+								<tbody id="wmsTxnBody"></tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<section class="view" id="view-fms">
+				<div class="view-head">
+					<div>
+						<h2 id="fmsTitle">FMS - Theo dõi đàn</h2>
+						<p id="fmsDesc">Giám sát population thực tế so với dự tính và trạng thái thức ăn.</p>
+					</div>
+				</div>
+				<div class="card" style="padding:10px;">
+					<div class="filter-bar">
+						<select class="form-control" id="fmsFlockFilter"></select>
+						<button class="btn btn-outline" id="btnFmsRefresh"><span
+								class="material-symbols-outlined">refresh</span><span id="btnFmsRefreshLabel">Tải
+								lại</span></button>
+					</div>
+				</div>
+				<div class="grid-2" style="margin-top:10px;">
+					<div class="card" id="fmsSummaryCard"></div>
+					<div class="card">
+						<h3 id="fmsChartTitle">Population Actual vs Estimate</h3>
+						<div id="fmsPopulationChart" style="height:320px;"></div>
+						<div class="state-box" id="fmsPopulationEmpty" style="display:none;"><span
+								class="material-symbols-outlined">query_stats</span><span
+								id="fmsPopulationEmptyText">Chưa có dữ liệu biểu đồ</span>
+						</div>
+					</div>
+				</div>
+				<div class="card" style="padding:0;margin-top:10px;">
+					<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+						<h3 style="margin:0;" id="fmsLogTitle">Nhật ký FMS của flock</h3>
+					</div>
+					<div class="table-wrap">
+						<table class="erp-table">
+							<thead id="fmsHead"></thead>
+							<tbody id="fmsBody"></tbody>
+						</table>
+					</div>
+					<div class="pagination-bar" id="fmsLogPagination"></div>
+				</div>
+			</section>
+
+			<section class="view" id="view-setup">
+				<div class="view-head">
+					<div>
+						<h2 id="setupTitle">Setup - Master Data</h2>
+						<p id="setupDesc">Quản trị danh mục Config, Product, Feed Standard và Policy Threshold.</p>
+					</div>
+					<div class="inline-fields">
+						<button class="btn btn-outline" id="btnSetupConfig"><span
+								class="material-symbols-outlined">domain_add</span><span id="btnSetupConfigLabel">Upsert
+								Config</span></button>
+						<button class="btn btn-outline" id="btnSetupProduct"><span
+								class="material-symbols-outlined">barcode</span><span id="btnSetupProductLabel">Upsert
+								Product</span></button>
+						<button class="btn btn-outline" id="btnSetupFeed"><span
+								class="material-symbols-outlined">nutrition</span><span id="btnSetupFeedLabel">Upsert
+								Feed Std</span></button>
+						<button class="btn btn-primary" id="btnSetupPolicy"><span
+								class="material-symbols-outlined">policy</span><span id="btnSetupPolicyLabel">Upsert
+								Policy</span></button>
+					</div>
+				</div>
+				<div class="grid-2">
+					<div class="card" style="padding:0;">
+						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+							<h3 style="margin:0;" id="setupConfigTitle">Config Tenants</h3>
+						</div>
+						<div class="table-wrap">
+							<table class="erp-table">
+								<thead id="setupConfigHead"></thead>
+								<tbody id="setupConfigBody"></tbody>
+							</table>
+						</div>
+					</div>
+					<div class="card" style="padding:0;">
+						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+							<h3 style="margin:0;" id="setupProductTitle">Product Master</h3>
+						</div>
+						<div class="table-wrap">
+							<table class="erp-table">
+								<thead id="setupProductHead"></thead>
+								<tbody id="setupProductBody"></tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+				<div class="card" style="padding:10px;margin-top:10px;">
+					<div class="filter-bar">
+						<div class="search-box">
+							<span class="material-symbols-outlined">search</span>
+							<input class="form-control" id="setupFeedSearch"
+								placeholder="Tìm Feed Standard theo Loại Gà / Loại cám">
+						</div>
+						<div class="search-box">
+							<span class="material-symbols-outlined">search</span>
+							<input class="form-control" id="setupPolicySearch"
+								placeholder="Tìm Policy theo SKU / status / note">
+						</div>
+					</div>
+				</div>
+				<div class="grid-2" style="margin-top:10px;">
+					<div class="card" style="padding:0;">
+						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+							<h3 style="margin:0;" id="setupFeedTitle">Feed Standard</h3>
+						</div>
+						<div class="table-wrap">
+							<table class="erp-table">
+								<thead id="setupFeedHead"></thead>
+								<tbody id="setupFeedBody"></tbody>
+							</table>
+						</div>
+					</div>
+					<div class="card" style="padding:0;">
+						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+							<h3 style="margin:0;" id="setupPolicyTitle">Policy Thresholds</h3>
+						</div>
+						<div class="table-wrap">
+							<table class="erp-table">
+								<thead id="setupPolicyHead"></thead>
+								<tbody id="setupPolicyBody"></tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+			</section>
+		</main>
+	</div>
+
+	<div class="toast-wrap" id="toastContainer"></div>
+
+	<?!= include('ui/components/Modal') ?>
+	<?!= include('ui/components/Dialogs') ?>
+	<?!= include('ui/assets/LogoData') ?>
+
+	<?!= include('ui/scripts/I18n') ?>
+	<?!= include('ui/scripts/AppMain') ?>
+</body>
+
+</html>

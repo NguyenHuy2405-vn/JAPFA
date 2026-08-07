@@ -1,0 +1,107 @@
+/**
+ * Core sheet mappings used by service-layer helpers.
+ * Keep these keys stable because other services use these key names.
+ */
+const SHEET_NAMES = {
+  CONFIG: "Config",
+  PRODUCT_MASTER: "Product_Master",
+  FEED_STANDARD: "Feed_Standard",
+  POLICY_THRESHOLDS: "Policy_Thresholds",
+  USER_ROLES: "User_Roles",
+  FMS: "FMS",
+  WMS_FACTORY: "WMS_factory",
+  WMS_FARM: "WMS_farm",
+  OMS: "OMS",
+  HUONG_DAN: "Huong_Danv2",
+  API_V2_DOCS: "API v2",
+};
+
+/**
+ * Header/data row layout per sheet.
+ */
+const SHEET_LAYOUT = {
+  CONFIG: { headerRow: 1, dataStartRow: 2 },
+  PRODUCT_MASTER: { headerRow: 1, dataStartRow: 2 },
+  FEED_STANDARD: { headerRow: 2, dataStartRow: 3 },
+  POLICY_THRESHOLDS: { headerRow: 1, dataStartRow: 2 },
+  USER_ROLES: { headerRow: 1, dataStartRow: 2 },
+  FMS: { headerRow: 1, dataStartRow: 3 },
+  WMS_FACTORY: { headerRow: 1, dataStartRow: 2 },
+  WMS_FARM: { headerRow: 1, dataStartRow: 2 },
+  OMS: { headerRow: 1, dataStartRow: 2 },
+};
+
+/**
+ * Shared timezone used by Utils.gs date helpers.
+ */
+const APP_TIMEZONE = "Asia/Saigon";
+
+/**
+ * Open the core spreadsheet by configured ID.
+ *
+ * @returns {GoogleAppsScript.Spreadsheet.Spreadsheet}
+ */
+function getSpreadsheet_() {
+  const spreadsheetId =
+    typeof SPREADSHEET_ID !== "undefined" && SPREADSHEET_ID
+      ? SPREADSHEET_ID
+      : "1UKHhjwlGNY7aJpDP7-3ztRK1cOO9C3QV85pIDGI4B4I";
+  return SpreadsheetApp.openById(spreadsheetId);
+}
+
+/**
+ * Resolve a sheet object from internal sheet key.
+ *
+ * @param {string} sheetKey
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet}
+ */
+function getSheet_(sheetKey) {
+  const sheetName = SHEET_NAMES[sheetKey];
+  if (!sheetName) {
+    throw new Error('Code.js: sheetKey không hợp lệ: "' + sheetKey + '".');
+  }
+  const sheet = getSpreadsheet_().getSheetByName(sheetName);
+  if (!sheet) {
+    throw new Error('Code.js: Không tìm thấy sheet "' + sheetName + '".');
+  }
+  return sheet;
+}
+
+/**
+ * Resolve header/data-start layout from internal sheet key.
+ *
+ * @param {string} sheetKey
+ * @returns {{headerRow:number, dataStartRow:number}}
+ */
+function getSheetLayout_(sheetKey) {
+  const layout = SHEET_LAYOUT[sheetKey];
+  if (!layout) {
+    throw new Error(
+      'Code.js: Không có layout cho sheetKey: "' + sheetKey + '".',
+    );
+  }
+  return layout;
+}
+
+/**
+ * Entry point for Apps Script web app.
+ * Renders the main frontend layout.
+ *
+ * @returns {GoogleAppsScript.HTML.HtmlOutput}
+ */
+function doGet() {
+  return HtmlService.createTemplateFromFile("ui/Layout")
+    .evaluate()
+    .setTitle("JAPFA Poultry Control Tower")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * Include helper for HTML partials.
+ *
+ * @param {string} fileName
+ * @returns {string}
+ */
+function include(fileName) {
+  return HtmlService.createHtmlOutputFromFile(fileName).getContent();
+}

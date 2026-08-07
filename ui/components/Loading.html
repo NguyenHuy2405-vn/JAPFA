@@ -1,0 +1,25 @@
+<!--
+  FILE: Components/Loading.html
+  PURPOSE: Skeleton/spinner state — hiển thị trong lúc chờ google.script.run
+           trả kết quả (mọi page dùng chung, không tự viết loading riêng lẻ).
+  USAGE (client): PageHelpers.showLoading('#tableContainer')
+-->
+<template id="tpl-loading-spinner">
+  <div class="state-box">
+    <div style="width:30px;height:30px;border:3px solid #dce3e8;border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;"></div>
+    <span>Đang tải dữ liệu...</span>
+  </div>
+</template>
+
+<template id="tpl-loading-skeleton-row">
+  <tr class="skeleton-row">
+    <td colspan="99">
+      <div style="height:14px;background:linear-gradient(90deg,#eef1f4 25%,#e4e8ec 37%,#eef1f4 63%);background-size:400% 100%;animation:skeleton 1.4s ease infinite;border-radius:4px;"></div>
+    </td>
+  </tr>
+</template>
+
+<style>
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes skeleton { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+</style>

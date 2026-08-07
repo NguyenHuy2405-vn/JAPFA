@@ -1,0 +1,2338 @@
+<script>
+	google.charts.load('current', { packages: ['corechart'] });
+	google.charts.setOnLoadCallback(function () {
+		window.__gchartsReady = true;
+		if (window.__chartQueue) {
+			window.__chartQueue.forEach(function (fn) { fn(); });
+			window.__chartQueue = [];
+		}
+	});
+
+	const App = {
+		state: {
+			user: null,
+			lang: 'vi',
+			activeView: 'dashboard',
+			loadedViews: {},
+			configs: [],
+			products: [],
+			flocks: [],
+			wmsFilterData: { farms: [], flocksByFarm: {} },
+			wmsFarms: [],
+			wmsFarm: '',
+			wmsFlock: '',
+			wmsInventoryRows: [],
+			loaiGa: [],
+			fmsLogRows: [],
+			fmsLogPage: 1,
+			fmsLogPageSize: 20,
+			dashboardAlertWindowDays: 7,
+			dashboardAlertItems: [],
+			dashboardAlertFarm: '',
+			omsRows: [],
+			omsSelectedIds: {}
+		},
+
+		init: async function () {
+			this.state.lang = this.getPreferredLang();
+			this.injectLogo();
+			this.bindEvents();
+			this.applyLanguage();
+			this.renderLoadingState();
+			try {
+				await this.loadBootstrap();
+				this.switchView('dashboard');
+				await this.refreshActiveView();
+			} catch (err) {
+				this.toast(err.message || this.t('toastInitFailed'), 'error');
+			}
+		},
+
+		bindEvents: function () {
+			document.getElementById('btnLang').addEventListener('click', (evt) => {
+				evt.stopPropagation();
+				const menu = document.getElementById('langMenu');
+				const isOpen = menu.classList.toggle('is-open');
+				document.getElementById('btnLang').setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+			});
+			document.getElementById('omsBody').addEventListener('change', (evt) => this.handleOmsRowCheckboxChange(evt));
+			document.getElementById('omsBody').addEventListener('click', (evt) => this.handleOmsRowActionClick(evt));
+			document.getElementById('btnOmsMergeSuggest').addEventListener('click', () => this.openOrderMergeSuggestModal());
+			document.getElementById('btnOmsAssignTmsAll').addEventListener('click', () => this.assignTmsForAllUnfinishedOrders());
+			document.getElementById('btnOmsMergeSelected').addEventListener('click', () => this.mergeSelectedOrdersToTms());
+			document.getElementById('btnOmsClearSelection').addEventListener('click', () => this.clearOmsSelection());
+			document.querySelectorAll('#langMenu [data-lang]').forEach((btn) => {
+				btn.addEventListener('click', () => {
+					this.setLanguage(btn.dataset.lang);
+					const menu = document.getElementById('langMenu');
+					menu.classList.remove('is-open');
+					document.getElementById('btnLang').setAttribute('aria-expanded', 'false');
+				});
+			});
+
+			document.addEventListener('click', (evt) => {
+				const wrap = document.getElementById('langSwitch');
+				if (!wrap.contains(evt.target)) {
+					document.getElementById('langMenu').classList.remove('is-open');
+					document.getElementById('btnLang').setAttribute('aria-expanded', 'false');
+				}
+			});
+
+			document.getElementById('mainTabs').addEventListener('click', (evt) => {
+				const btn = evt.target.closest('.nav-tab');
+				if (!btn) return;
+				this.switchView(btn.dataset.view);
+				this.refreshActiveView();
+			});
+
+			document.getElementById('btnOmsRefresh').addEventListener('click', () => this.loadOms(true));
+			document.getElementById('btnWmsRefresh').addEventListener('click', () => this.loadWms(true));
+			document.getElementById('btnFmsRefresh').addEventListener('click', () => this.loadFms(true));
+
+			document.getElementById('omsStatusFilter').addEventListener('change', () => this.loadOms(true));
+			document.getElementById('omsSearch').addEventListener('input', () => this.loadOms(true));
+			document.getElementById('wmsFarmFilter').addEventListener('change', () => this.handleWmsFarmFilterChange());
+			document.getElementById('wmsFlockFilter').addEventListener('change', () => this.handleWmsFlockFilterChange());
+			document.getElementById('fmsFlockFilter').addEventListener('change', () => this.loadFms(true));
+			document.getElementById('fmsLogPagination').addEventListener('click', (evt) => this.handleFmsLogPaginationClick(evt));
+
+			document.getElementById('btnCreateOrder').addEventListener('click', () => this.openCreateOrderModal());
+			document.getElementById('btnWmsInbound').addEventListener('click', () => this.openTxnModal('Inbound'));
+			document.getElementById('btnWmsOutbound').addEventListener('click', () => this.openTxnModal('Outbound'));
+			document.getElementById('btnWmsAdjust').addEventListener('click', () => this.openAdjustModal());
+			document.getElementById('btnWmsCreateOrder').addEventListener('click', () => this.openCreateFarmOrderModal());
+
+			document.getElementById('btnSetupConfig').addEventListener('click', () => this.openSetupConfigModal());
+			document.getElementById('btnSetupProduct').addEventListener('click', () => this.openSetupProductModal());
+			document.getElementById('btnSetupFeed').addEventListener('click', () => this.openSetupFeedModal());
+			document.getElementById('btnSetupPolicy').addEventListener('click', () => this.openSetupPolicyModal());
+
+			document.getElementById('setupFeedSearch').addEventListener('input', () => this.loadSetup(true));
+			document.getElementById('setupPolicySearch').addEventListener('input', () => this.loadSetup(true));
+			document.getElementById('setupPolicyBody').addEventListener('click', (evt) => {
+				const btn = evt.target.closest('[data-save-policy]');
+				if (!btn) return;
+				this.savePolicyInline(btn.dataset.savePolicy);
+			});
+
+			document.getElementById('dashboardAlertFarmFilter').addEventListener('change', (evt) => {
+				this.state.dashboardAlertFarm = String(evt.target.value || '');
+				this.renderDashboardAlertTable({
+					items: this.state.dashboardAlertItems,
+					days: this.state.dashboardAlertWindowDays
+				});
+			});
+
+		},
+
+		renderLoadingState: function () {
+			document.getElementById('dashboardKpis').innerHTML = '<div class="state-box card" style="grid-column:1/-1;">' + this.escape(this.t('msgLoadingDashboard')) + '</div>';
+		},
+
+		loadBootstrap: async function () {
+			const user = await this.callRaw('getCurrentUserProfile');
+			const [configsResp, productsResp, flocksResp, loaiGaResp, wmsFilterResp] = await Promise.all([
+				this.rpc('getConfigList'),
+				this.rpc('getProductMasterList'),
+				this.rpc('getFlockList'),
+				this.rpc('getDistinctLoaiGa'),
+				this.rpc('getWmsFarmFilterData', 'FMS')
+			]);
+
+			this.state.user = user;
+			this.state.configs = configsResp.data || [];
+			this.state.products = (productsResp.data || []).filter((p) => String(p.Status || '').toUpperCase() === 'ACTIVE');
+			this.state.flocks = flocksResp.data || [];
+			this.state.wmsFilterData = (wmsFilterResp && wmsFilterResp.data) || { farms: [], flocksByFarm: {} };
+			this.state.wmsFarms = (this.state.wmsFilterData && this.state.wmsFilterData.farms) || [];
+			this.state.loaiGa = loaiGaResp.data || [];
+
+			this.renderUserChip();
+			this.applyRoleBasedViewAccess();
+
+			this.fillTenantOptions();
+			this.fillFlockOptions();
+			this.fillWmsFarmOptions();
+			this.fillWmsFlockOptions();
+		},
+
+		injectLogo: function () {
+			if (window.JAPFA_LOGO_DATA) {
+				document.getElementById('brandLogo').src = window.JAPFA_LOGO_DATA;
+			}
+		},
+
+		getPreferredLang: function () {
+			try {
+				const saved = localStorage.getItem('japfa_lang');
+				if (saved === 'vi' || saved === 'en') return saved;
+			} catch (e) {
+				// ignore storage read failures
+			}
+			return 'vi';
+		},
+
+		setLanguage: function (lang) {
+			if (lang !== 'vi' && lang !== 'en') return;
+			this.state.lang = lang;
+			this.applyLanguage();
+			this.renderUserChip();
+			this.refreshActiveView(true);
+			try {
+				localStorage.setItem('japfa_lang', lang);
+			} catch (e) {
+				// ignore storage write failures
+			}
+		},
+
+		applyLanguage: function () {
+			const lang = this.state.lang === 'en' ? 'en' : 'vi';
+			const dict = I18N[lang] || I18N.vi;
+			document.documentElement.lang = lang;
+			document.getElementById('brandContext').textContent = dict.brandContext;
+			this.applyStaticTranslations();
+			this.fillTenantOptions();
+			this.fillFlockOptions();
+			this.fillWmsFarmOptions();
+			this.fillWmsFlockOptions();
+			document.getElementById('langCurrent').textContent = lang.toUpperCase();
+			document.querySelectorAll('#langMenu [data-lang]').forEach((btn) => {
+				btn.classList.toggle('is-active', btn.dataset.lang === lang);
+			});
+			if (!this.state.user) {
+				document.getElementById('userChip').innerHTML = '<span class="material-symbols-outlined">person</span>' + this.escape(dict.loadingUser);
+			}
+		},
+
+		t: function (key) {
+			const lang = this.state.lang === 'en' ? 'en' : 'vi';
+			const dict = I18N[lang] || I18N.vi;
+			return dict[key] || I18N.vi[key] || key;
+		},
+
+		formatT: function (key, params) {
+			let text = this.t(key);
+			if (!params) return text;
+			Object.keys(params).forEach((k) => {
+				text = text.replace(new RegExp('\\{' + k + '\\}', 'g'), String(params[k]));
+			});
+			return text;
+		},
+
+		applyStaticTranslations: function () {
+			const map = {
+				navDashboardLabel: 'navDashboard',
+				navOmsLabel: 'navOms',
+				navWmsLabel: 'navWms',
+				navFmsLabel: 'navFms',
+				navSetupLabel: 'navSetup',
+				dashboardTitle: 'dashboardTitle',
+				dashboardDesc: 'dashboardDesc',
+				dashboardOrderPieTitle: 'dashboardOrderPieTitle',
+				dashboardOrderPieEmptyText: 'dashboardOrderPieEmpty',
+				dashboardAlertTitle: 'dashboardAlertTitle',
+				dashboardAlertFarmFilterLabel: 'dashboardAlertFlockFilterLabel',
+				omsTitle: 'omsTitle',
+				omsDesc: 'omsDesc',
+				omsFactoryTitle: 'wmsScopeFactory',
+				omsFactoryInventoryTitle: 'wmsInventoryTitle',
+				omsFactoryTxnTitle: 'wmsTxnTitle',
+				btnCreateOrderLabel: 'btnCreateOrder',
+				omsStatusAllOption: 'statusAll',
+				omsStatusPlannedOption: 'statusPlanned',
+				omsStatusPickedOption: 'statusPickedUp',
+				omsStatusTransitOption: 'statusInTransit',
+				omsStatusCompletedOption: 'statusCompleted',
+				btnOmsRefreshLabel: 'reload',
+				wmsTitle: 'wmsTitle',
+				wmsDesc: 'wmsDesc',
+				btnWmsInboundLabel: 'wmsInbound',
+				btnWmsOutboundLabel: 'wmsOutbound',
+				btnWmsAdjustLabel: 'wmsAdjust',
+				btnWmsCreateOrderLabel: 'btnCreateOrder',
+				wmsScopeFarmOption: 'wmsScopeFarm',
+				wmsScopeFactoryOption: 'wmsScopeFactory',
+				wmsFarmFilterLabel: 'wmsFarmFilterLabel',
+				wmsFlockFilterLabel: 'wmsFlockFilterLabel',
+				btnWmsRefreshLabel: 'reload',
+				wmsScopeNote: 'wmsScopeNote',
+				wmsInventoryTitle: 'wmsFarmInventoryTitle',
+				wmsTxnTitle: 'wmsTxnTitle',
+				fmsTitle: 'fmsTitle',
+				fmsDesc: 'fmsDesc',
+				btnFmsRefreshLabel: 'reload',
+				fmsChartTitle: 'fmsChartTitle',
+				fmsPopulationEmptyText: 'fmsChartEmpty',
+				fmsLogTitle: 'fmsLogTitle',
+				setupTitle: 'setupTitle',
+				setupDesc: 'setupDesc',
+				btnSetupConfigLabel: 'setupConfigBtn',
+				btnSetupProductLabel: 'setupProductBtn',
+				btnSetupFeedLabel: 'setupFeedBtn',
+				btnSetupPolicyLabel: 'setupPolicyBtn',
+				setupConfigTitle: 'setupConfigTitle',
+				setupProductTitle: 'setupProductTitle',
+				setupFeedTitle: 'setupFeedTitle',
+				setupPolicyTitle: 'setupPolicyTitle',
+				btnOmsMergeSuggestLabel: 'btnOmsMergeSuggestLabel',
+				btnOmsAssignTmsAllLabel: 'btnOmsAssignTmsAllLabel',
+				btnOmsMergeSelectedLabel: 'btnOmsMergeSelectedLabel',
+				btnOmsClearSelection: 'btnOmsClearSelectionLabel'
+			};
+			Object.keys(map).forEach((id) => {
+				const el = document.getElementById(id);
+				if (el) el.textContent = this.t(map[id]);
+			});
+			const omsSearch = document.getElementById('omsSearch');
+			if (omsSearch) omsSearch.placeholder = this.t('searchOms');
+			const setupFeedSearch = document.getElementById('setupFeedSearch');
+			if (setupFeedSearch) setupFeedSearch.placeholder = this.t('setupFeedSearch');
+			const setupPolicySearch = document.getElementById('setupPolicySearch');
+			if (setupPolicySearch) setupPolicySearch.placeholder = this.t('setupPolicySearch');
+		},
+
+		renderUserChip: function () {
+			if (!this.state.user) return;
+			document.getElementById('userChip').innerHTML = '<span class="material-symbols-outlined">person</span>' +
+				this.escape(this.state.user.email || 'unknown') + ' | ' + this.escape(this.state.user.role || 'User');
+		},
+
+		isProcurementUser: function () {
+			const role = String((this.state.user && this.state.user.role) || '').toLowerCase();
+			return /procurement|purchasing|buyer|mua\s*hang/.test(role);
+		},
+
+		isFarmTechUser: function () {
+			const role = String((this.state.user && this.state.user.role) || '').toLowerCase();
+			return /farm[_\s-]*technical|farm[_\s-]*tech|technical[_\s-]*farm|ky\s*thuat.*farm|farm.*ky\s*thuat/.test(role);
+		},
+
+		applyRoleBasedViewAccess: function () {
+			const tabOms = document.querySelector('.nav-tab[data-view="oms"]');
+			const tabWms = document.querySelector('.nav-tab[data-view="wms"]');
+			if (!tabOms || !tabWms) return;
+
+			const isProc = this.isProcurementUser();
+			const isFarmTech = this.isFarmTechUser();
+
+			if (isProc) {
+				tabOms.style.display = '';
+				tabWms.style.display = 'none';
+			} else if (isFarmTech) {
+				tabOms.style.display = 'none';
+				tabWms.style.display = '';
+			} else {
+				tabOms.style.display = '';
+				tabWms.style.display = '';
+			}
+
+			if (this.state.activeView === 'oms' && tabOms.style.display === 'none') {
+				this.switchView('wms');
+			}
+			if (this.state.activeView === 'wms' && tabWms.style.display === 'none') {
+				this.switchView('oms');
+			}
+		},
+
+		refreshActiveView: async function (force) {
+			if (!force && this.state.loadedViews[this.state.activeView]) return;
+			if (this.state.activeView === 'dashboard') return this.loadDashboard(force);
+			if (this.state.activeView === 'oms') return this.loadOms(force);
+			if (this.state.activeView === 'wms') return this.loadWms(force);
+			if (this.state.activeView === 'fms') return this.loadFms(force);
+			if (this.state.activeView === 'setup') return this.loadSetup(force);
+		},
+
+		switchView: function (viewName) {
+			this.state.activeView = viewName;
+			document.querySelectorAll('.nav-tab').forEach((el) => el.classList.toggle('is-active', el.dataset.view === viewName));
+			document.querySelectorAll('.view').forEach((el) => el.classList.toggle('is-active', el.id === 'view-' + viewName));
+		},
+
+		fillTenantOptions: function () {
+			const tenantSelect = document.getElementById('wmsTenantFilter');
+			if (!tenantSelect) return;
+			const options = ['<option value="">' + this.escape(this.t('allTenants')) + '</option>']
+				.concat(this.state.configs.map((c) => '<option value="' + this.escapeAttr(c.Tenant_id || '') + '">' +
+					this.escape(c.Tenant_id || '') + ' - ' + this.escape(c.Tenant || '') + '</option>'));
+			tenantSelect.innerHTML = options.join('');
+		},
+
+		fillFlockOptions: function () {
+			const flockSelect = document.getElementById('fmsFlockFilter');
+			const options = ['<option value="">' + this.escape(this.t('selectFlock')) + '</option>']
+				.concat(this.state.flocks.map((f) => '<option value="' + this.escapeAttr(f.FLOCK_ID || '') + '">' +
+					this.escape(f.FLOCK_ID || '') + ' - ' + this.escape(f.Tenant || '') + '</option>'));
+			flockSelect.innerHTML = options.join('');
+		},
+
+		getWmsFarmValues: function () {
+			const farms = (this.state.wmsFilterData && this.state.wmsFilterData.farms) || [];
+			return farms.slice();
+		},
+
+		compareFarmName_: function (a, b) {
+			const aNum = this.extractTrailingNumber_(a);
+			const bNum = this.extractTrailingNumber_(b);
+			if (aNum !== null && bNum !== null && aNum !== bNum) return aNum - bNum;
+			return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' });
+		},
+
+		extractTrailingNumber_: function (text) {
+			const match = String(text || '').trim().match(/(\d+)\s*$/);
+			if (!match) return null;
+			const num = Number(match[1]);
+			return Number.isFinite(num) ? num : null;
+		},
+
+		parseFarmFromManagedBy: function (managedByValue) {
+			const raw = String(managedByValue || '').trim();
+			if (!raw) return '';
+
+			// Example: "Japfa Farm 1 - Flock 1" -> "Japfa Farm 1"
+			// Support separators: -, –, — and optional spaces.
+			const flockSplit = raw.match(/^(.*?)\s*[-–—]\s*flock\b/i);
+			if (flockSplit && String(flockSplit[1] || '').trim()) {
+				return String(flockSplit[1] || '').trim();
+			}
+
+			return raw;
+		},
+
+		parseFarmFromFlockName: function (flockNameValue) {
+			const raw = String(flockNameValue || '').trim();
+			if (!raw) return '';
+
+			const flockSplit = raw.match(/^(.*?)\s*[-–—]\s*flock\b/i);
+			if (flockSplit && String(flockSplit[1] || '').trim()) {
+				return String(flockSplit[1] || '').trim();
+			}
+
+			return raw;
+		},
+
+		parseFarmFromFlockId: function (flockIdValue) {
+			const raw = String(flockIdValue || '').trim();
+			if (!raw) return '';
+
+			const splitByDash = raw.match(/^(.*?)\s*[-–—]\s*flock\b/i);
+			if (splitByDash && String(splitByDash[1] || '').trim()) {
+				return String(splitByDash[1] || '').trim();
+			}
+
+			const splitBySlash = raw.match(/^(.*?)\s*\/\s*flock\b/i);
+			if (splitBySlash && String(splitBySlash[1] || '').trim()) {
+				return String(splitBySlash[1] || '').trim();
+			}
+
+			return '';
+		},
+
+		isFactoryLabel: function (value) {
+			const text = String(value || '').trim().toLowerCase();
+			if (!text) return false;
+			return /\bfactory\b|\bnha\s*may\b|\bnhà\s*máy\b/.test(text);
+		},
+
+		deriveFarmNameFromConfigRow: function (row) {
+			const managedRaw = String(row['Managed by'] || row['Managed_by'] || '').trim();
+			const managedParsed = this.parseFarmFromManagedBy(managedRaw);
+			const tenant = String(row.Tenant || '').trim();
+			const flockNameParsed = this.parseFarmFromFlockName(String(row.FLOCK_NAME || '').trim());
+			const flockIdParsed = this.parseFarmFromFlockId(String(row.FLOCK_ID || '').trim());
+
+			if (flockIdParsed && !this.isFactoryLabel(flockIdParsed)) return flockIdParsed;
+			if (managedParsed && !this.isFactoryLabel(managedParsed)) return managedParsed;
+			if (flockNameParsed && !this.isFactoryLabel(flockNameParsed)) return flockNameParsed;
+			if (tenant && !this.isFactoryLabel(tenant)) return tenant;
+			return flockIdParsed || managedParsed || flockNameParsed || tenant || managedRaw || '';
+		},
+
+		fillWmsFarmOptions: function () {
+			const farmSelect = document.getElementById('wmsFarmFilter');
+			if (!farmSelect) return;
+
+			const farms = this.getWmsFarmValues();
+			this.state.wmsFarms = farms;
+			farmSelect.innerHTML = farms
+				.map((farm) => '<option value="' + this.escapeAttr(farm) + '">' + this.escape(farm) + '</option>')
+				.join('');
+
+			if (!this.state.wmsFarm || farms.indexOf(this.state.wmsFarm) === -1) {
+				this.state.wmsFarm = farms[0] || '';
+			}
+			farmSelect.value = this.state.wmsFarm;
+		},
+
+		fillWmsFlockOptions: function () {
+			const flockSelect = document.getElementById('wmsFlockFilter');
+			if (!flockSelect) return;
+
+			const selectedFarm = String(this.state.wmsFarm || '').trim();
+			const farmMap = (this.state.wmsFilterData && this.state.wmsFilterData.flocksByFarm) || {};
+			let rows = selectedFarm && farmMap[selectedFarm] ? farmMap[selectedFarm] : [];
+
+			if ((!selectedFarm || rows.length === 0) && (this.state.wmsFarms || []).length > 0) {
+				const firstFarmWithFlock = (this.state.wmsFarms || []).find((farm) => {
+					return farmMap[farm] && farmMap[farm].length > 0;
+				});
+				if (firstFarmWithFlock) {
+					this.state.wmsFarm = firstFarmWithFlock;
+					rows = farmMap[firstFarmWithFlock] || [];
+					const farmSelect = document.getElementById('wmsFarmFilter');
+					if (farmSelect) farmSelect.value = firstFarmWithFlock;
+				}
+			}
+
+			const opts = rows.map((c) => {
+				const flockId = String(c.FLOCK_ID || '').trim();
+				const flockName = String(c.FLOCK_NAME || '').trim();
+				return '<option value="' + this.escapeAttr(flockId) + '">' + this.escape(flockId + (flockName ? ' - ' + flockName : '')) + '</option>';
+			});
+
+			flockSelect.innerHTML = opts.length ? opts.join('') : '<option value="">' + this.escape(this.t('selectFlock')) + '</option>';
+			if (!this.state.wmsFlock || !rows.some((r) => String(r.FLOCK_ID || '').trim() === this.state.wmsFlock)) {
+				this.state.wmsFlock = rows.length ? String(rows[0].FLOCK_ID || '').trim() : '';
+			}
+			flockSelect.value = this.state.wmsFlock;
+		},
+
+		handleWmsFarmFilterChange: function () {
+			const farmSelect = document.getElementById('wmsFarmFilter');
+			const farms = this.state.wmsFarms || [];
+			const candidate = String((farmSelect && farmSelect.value) || '').trim();
+			this.state.wmsFarm = farms.indexOf(candidate) !== -1 ? candidate : (farms[0] || '');
+			if (farmSelect) farmSelect.value = this.state.wmsFarm;
+			this.fillWmsFlockOptions();
+			this.loadWms(true);
+		},
+
+		handleWmsFlockFilterChange: function () {
+			const flockSelect = document.getElementById('wmsFlockFilter');
+			this.state.wmsFlock = String((flockSelect && flockSelect.value) || '').trim();
+			this.loadWms(true);
+		},
+
+		loadDashboard: async function () {
+			try {
+				const [overview, alertsResp] = await Promise.all([
+					this.rpc('getDashboardOverview'),
+					this.rpc('getDashboardFMSAlertTable', this.state.dashboardAlertWindowDays)
+				]);
+
+				const ov = overview.data || {};
+				const statusCounts = ov.orderStatusCounts || {};
+				const kpis = [
+					{ label: this.t('dashboardAlertTitle'), value: ov.fmsAlertCount || 0, icon: 'warning' },
+					{ label: this.t('wmsScopeFactory') + ' SKU', value: (ov.factoryInventory || []).length, icon: 'factory' },
+					{ label: this.t('wmsScopeFarm') + ' SKU', value: (ov.farmInventory || []).length, icon: 'agriculture' },
+					{ label: this.t('navOms') + ' ' + this.t('kpiTotalSuffix'), value: Object.values(statusCounts).reduce((a, b) => a + (Number(b) || 0), 0), icon: 'receipt_long' }
+				];
+
+				document.getElementById('dashboardKpis').innerHTML = kpis.map((k) =>
+					'<div class="kpi-card">' +
+					'<div class="kpi-icon"><span class="material-symbols-outlined">' + k.icon + '</span></div>' +
+					'<div class="kpi-label">' + this.escape(k.label) + '</div>' +
+					'<div class="kpi-value">' + this.escape(String(k.value)) + '</div>' +
+					'</div>'
+				).join('');
+
+				const chartData = [[this.t('hStatus'), this.t('hCount')]];
+				const chartColors = [];
+				Object.keys(statusCounts).forEach((k) => {
+					const value = Number(statusCounts[k]) || 0;
+					if (value <= 0) return;
+					chartData.push([this.displayOrderStatus(k), value]);
+					chartColors.push(this.orderStatusColor(k));
+				});
+				this.drawPie('dashboardOrderPie', 'dashboardOrderPieEmpty', chartData, chartColors);
+				this.state.dashboardAlertItems = ((alertsResp && alertsResp.data && alertsResp.data.items) || []);
+
+				this.renderDashboardAlertTable((alertsResp && alertsResp.data) || {
+					items: [],
+					total: 0,
+					days: this.state.dashboardAlertWindowDays
+				});
+				this.state.loadedViews.dashboard = true;
+			} catch (err) {
+				this.toast(err.message || this.t('toastDashboardFailed'), 'error');
+			}
+		},
+
+		renderDashboardAlertTable: function (payload) {
+			const allRows = payload.items || [];
+			const farmFilter = document.getElementById('dashboardAlertFarmFilter');
+			const farms = [];
+			const farmSeen = {};
+			allRows.forEach((r) => {
+				const farm = String(r.TENANT_ID || r.FARM_NAME || '').trim();
+				if (!farm || farmSeen[farm]) return;
+				farmSeen[farm] = true;
+				farms.push(farm);
+			});
+
+			if (farms.length > 0) {
+				if (!this.state.dashboardAlertFarm || farms.indexOf(this.state.dashboardAlertFarm) === -1) {
+					this.state.dashboardAlertFarm = farms[0];
+				}
+				farmFilter.innerHTML = farms
+					.map((farm) => '<option value="' + this.escapeAttr(farm) + '">' + this.escape(farm) + '</option>')
+					.join('');
+				farmFilter.value = this.state.dashboardAlertFarm;
+				farmFilter.disabled = false;
+			} else {
+				this.state.dashboardAlertFarm = '';
+				farmFilter.innerHTML = '<option value="">-</option>';
+				farmFilter.disabled = true;
+			}
+
+			const selectedFarm = this.state.dashboardAlertFarm;
+			const rows = selectedFarm
+				? allRows.filter((r) => String(r.TENANT_ID || r.FARM_NAME || '').trim() === selectedFarm)
+				: allRows;
+
+			document.getElementById('dashboardAlertHead').innerHTML =
+				'<tr>' +
+				'<th>' + this.escape(this.t('hDate')) + '</th>' +
+				'<th>' + this.escape(this.t('hFarm')) + '</th>' +
+				'<th>' + this.escape(this.t('hFlock')) + '</th>' +
+				'<th>' + this.escape(this.t('hProductName')) + '</th>' +
+				'<th>' + this.escape(this.t('hStatus')) + '</th>' +
+				'</tr>';
+
+			document.getElementById('dashboardAlertBody').innerHTML = rows.length === 0
+				? '<tr><td colspan="5"><div class="state-box">' + this.escape(this.t('msgNoLowAlert')) + '</div></td></tr>'
+				: rows.map((r) =>
+					'<tr>' +
+					'<td>' + this.formatDate(r.DATE) + '</td>' +
+					'<td>' + this.escape(r.TENANT_ID || r.FARM_NAME || '-') + '</td>' +
+					'<td>' + this.escape(r.FLOCK_ID || '-') + '</td>' +
+					'<td>' + this.escape(r.FEED_NAME || '-') + '</td>' +
+					'<td><span class="badge ' + this.badgeClass(r.STATUS) + '">' + this.escape(this.displayThreshold(r.STATUS || '-')) + '</span></td>' +
+					'</tr>'
+				).join('');
+
+			document.getElementById('dashboardAlertPagination').innerHTML = '';
+		},
+
+		loadOms: async function () {
+			const body = document.getElementById('omsBody');
+			body.innerHTML = '<tr><td colspan="10"><div class="state-box">' + this.escape(this.t('msgLoadingOrders')) + '</div></td></tr>';
+			try {
+				const status = document.getElementById('omsStatusFilter').value;
+				const search = document.getElementById('omsSearch').value.trim().toLowerCase();
+				const filters = status ? { Status: status } : {};
+				const resp = await this.rpc('getOrderList', filters);
+				let rows = resp.data || [];
+				if (search) {
+					rows = rows.filter((r) => {
+						const target = [
+							this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID']),
+							this.getRowValue(r, ['Client']),
+							this.getRowValue(r, ['Mã hàng', 'SKU']),
+							this.getRowValue(r, ['Nơi đi']),
+							this.getRowValue(r, ['Nơi đến']),
+							this.getRowValue(r, ['FLOCK_ID', 'FLOCK ID', 'Flock ID'])
+						].join(' ').toLowerCase();
+						return target.indexOf(search) !== -1;
+					});
+				}
+				this.state.omsRows = rows;
+
+				// Giữ lại lựa chọn cũ chỉ cho những Order ID còn xuất hiện trong danh sách mới
+				const visibleIds = {};
+				rows.forEach((r) => { visibleIds[this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID'])] = true; });
+				Object.keys(this.state.omsSelectedIds || {}).forEach((id) => {
+					if (!visibleIds[id]) delete this.state.omsSelectedIds[id];
+				});
+
+				document.getElementById('omsHead').innerHTML =
+					'<tr><th>' + this.escape(this.t('hSelect')) + '</th><th>' + this.escape(this.t('hOrderId')) + '</th><th>' + this.escape(this.t('hClient')) + '</th><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hQty')) + '</th><th>' + this.escape(this.t('hFrom')) + '</th><th>' + this.escape(this.t('hTo')) + '</th><th>' + this.escape(this.t('hFlock')) + '</th><th>' + this.escape(this.t('hStatus')) + '</th><th>' + this.escape(this.t('hTmsOrderId')) + '</th><th>' + this.escape(this.t('hCreateDate')) + '</th><th>' + this.escape(this.t('hAction')) + '</th></tr>';
+				body.innerHTML = rows.length === 0
+					? '<tr><td colspan="12"><div class="state-box"><span class="material-symbols-outlined">inbox</span>' + this.escape(this.t('msgNoOrders')) + '</div></td></tr>'
+					: rows.slice(0, 200).map((r) => {
+						const orderId = this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID']);
+						const client = this.getRowValue(r, ['Client']);
+						const sku = this.getRowValue(r, ['Mã hàng', 'SKU']);
+						const qty = this.getRowValue(r, ['Số lượng', 'Qty']);
+						const from = this.getRowValue(r, ['Nơi đi']);
+						const to = this.getRowValue(r, ['Nơi đến']);
+						const flockId = this.getRowValue(r, ['FLOCK_ID', 'FLOCK ID', 'Flock ID']);
+						const statusText = this.getRowValue(r, ['Status', 'Trạng thái']);
+						const tmsOrderId = this.getRowValue(r, ['TMS_Order ID']);
+						const createDate = this.getRowValue(r, ['Create Date', 'Create date', 'Ngày tạo đơn hàng']);
+						const eligible = this.isOmsOrderMergeable(r);
+						const editable = this.isOmsOrderEditable(r);
+						const checked = orderId && this.state.omsSelectedIds[orderId] ? 'checked' : '';
+						const checkboxHtml = eligible
+							? '<input type="checkbox" data-order-id="' + this.escapeAttr(orderId) + '" ' + checked + '>'
+							: '<input type="checkbox" disabled title="' + this.escapeAttr(this.t('mergeNotEligibleHint')) + '">';
+						const actionButtons =
+							'<div class="inline-fields" style="gap:6px;">' +
+							'<button class="btn btn-outline btn-sm" type="button" data-view-order-id="' + this.escapeAttr(orderId) + '">' + this.escape(this.t('btnViewDetail')) + '</button>' +
+							'<button class="btn btn-ghost btn-sm" type="button" data-edit-order-id="' + this.escapeAttr(orderId) + '" ' + (editable ? '' : 'disabled title="' + this.escapeAttr(this.t('editNotEligibleHint')) + '"') + '>' + this.escape(this.t('btnEditOrder')) + '</button>' +
+							'</div>';
+						return '<tr>' +
+							'<td>' + checkboxHtml + '</td>' +
+							'<td>' + this.escape(orderId || '-') + '</td>' +
+							'<td>' + this.escape(client || '') + '</td>' +
+							'<td>' + this.escape(sku || '') + '</td>' +
+							'<td>' + this.escape(String(qty || '')) + '</td>' +
+							'<td>' + this.escape(this.translateLocation(from || '')) + '</td>' +
+							'<td>' + this.escape(this.translateLocation(to || '')) + '</td>' +
+							'<td>' + this.escape(flockId || '-') + '</td>' +
+							'<td><span class="badge ' + this.orderStatusClass(statusText) + '">' + this.escape(this.displayOrderStatus(statusText || '')) + '</span></td>' +
+							'<td>' + (tmsOrderId ? '<span class="badge badge-outline">' + this.escape(tmsOrderId) + '</span>' : '-') + '</td>' +
+							'<td>' + this.formatDate(createDate) + '</td>' +
+							'<td>' + actionButtons + '</td>' +
+							'</tr>';
+					}).join('');
+				this.state.loadedViews.oms = true;
+				this.updateOmsMergeToolbar();
+				await this.loadOmsFactoryPanel();
+			} catch (err) {
+				body.innerHTML = '<tr><td colspan="12"><div class="state-box" style="color:#b3261e;">' + this.escape(err.message || this.t('toastOmsFailed')) + '</div></td></tr>';
+			}
+		},
+
+		loadOmsFactoryPanel: async function () {
+			const invBody = document.getElementById('omsFactoryInventoryBody');
+			const txnBody = document.getElementById('omsFactoryTxnBody');
+			if (!invBody || !txnBody) return;
+
+			invBody.innerHTML = '<tr><td colspan="4"><div class="state-box">' + this.escape(this.t('msgLoadingInventory')) + '</div></td></tr>';
+			txnBody.innerHTML = '<tr><td colspan="7"><div class="state-box">' + this.escape(this.t('msgLoadingTransactions')) + '</div></td></tr>';
+
+			try {
+				const resp = await this.rpc('getDashboardWMS', 'factory', null, 12);
+				const data = resp.data || {};
+				const inventory = data.inventory || [];
+				const txns = data.recentTransactions || [];
+
+				document.getElementById('omsFactoryInventoryHead').innerHTML = '<tr><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hCurrentStock')) + '</th><th>' + this.escape(this.t('hLastDate')) + '</th></tr>';
+				invBody.innerHTML = inventory.length === 0
+					? '<tr><td colspan="4"><div class="state-box">' + this.escape(this.t('msgNoInventory')) + '</div></td></tr>'
+					: inventory.slice(0, 150).map((r) =>
+						'<tr>' +
+						'<td>' + this.escape(r.SKU || '-') + '</td>' +
+						'<td>' + this.escape(String(this.roundUpNumber(r.currentStock))) + '</td>' +
+						'<td>' + this.formatDate(r.DATE || r.lastTransactionDate) + '</td>' +
+						'</tr>'
+					).join('');
+
+				document.getElementById('omsFactoryTxnHead').innerHTML = '<tr><th>' + this.escape(this.t('hTxnDate')) + '</th><th>' + this.escape(this.t('hTenantId')) + '</th><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hTxnType')) + '</th><th>' + this.escape(this.t('hIn')) + '</th><th>' + this.escape(this.t('hOut')) + '</th><th>' + this.escape(this.t('hEndQty')) + '</th></tr>';
+				txnBody.innerHTML = txns.length === 0
+					? '<tr><td colspan="7"><div class="state-box">' + this.escape(this.t('msgNoTransactions')) + '</div></td></tr>'
+					: txns.slice(0, 150).map((r) =>
+						'<tr>' +
+						'<td>' + this.formatDate(r.DATE) + '</td>' +
+						'<td>' + this.escape(r.Tenant_id || '-') + '</td>' +
+						'<td>' + this.escape(r.SKU || '-') + '</td>' +
+						'<td>' + this.escape(r['Loại giao dịch'] || '-') + '</td>' +
+						'<td>' + this.escape(String(this.roundUpNumber(r['Số lượng In'] || r.In_qtty))) + '</td>' +
+						'<td>' + this.escape(String(this.roundUpNumber(r['Số lượng Out'] || r.Out_qtty))) + '</td>' +
+						'<td>' + this.escape(String(this.roundUpNumber(r['Tồn kho cuối kỳ']))) + '</td>' +
+						'</tr>'
+					).join('');
+			} catch (err) {
+				invBody.innerHTML = '<tr><td colspan="4"><div class="state-box" style="color:#b3261e;">' + this.escape(err.message || this.t('toastWmsFailed')) + '</div></td></tr>';
+				txnBody.innerHTML = '<tr><td colspan="7"><div class="state-box" style="color:#b3261e;">' + this.escape(err.message || this.t('toastWmsFailed')) + '</div></td></tr>';
+			}
+		},
+		/**
+		 * 1 Order chỉ được chọn để ghép TMS khi chưa hoàn thành
+		 * và chưa có TMS_Order ID — khớp điều kiện validate fail-fast ở backend,
+		 * tránh user chọn rồi bị BE từ chối.
+		 */
+		isOmsOrderMergeable: function (row) {
+			const status = String(this.getRowValue(row, ['Status', 'Trạng thái']) || '').trim();
+			const tmsOrderId = this.getRowValue(row, ['TMS_Order ID']);
+			return status === 'Lên kế hoạch' && !tmsOrderId;
+		},
+
+		isOmsOrderEditable: function (row) {
+			const tmsOrderId = this.getRowValue(row, ['TMS_Order ID']);
+			return !tmsOrderId;
+		},
+
+		handleOmsRowActionClick: function (evt) {
+			const viewBtn = evt.target.closest('[data-view-order-id]');
+			if (viewBtn) {
+				this.openOrderDetailModal(viewBtn.dataset.viewOrderId);
+				return;
+			}
+			const editBtn = evt.target.closest('[data-edit-order-id]');
+			if (editBtn) {
+				if (editBtn.disabled) return;
+				this.openEditOrderModal(editBtn.dataset.editOrderId);
+			}
+		},
+
+		handleOmsRowCheckboxChange: function (evt) {
+			const cb = evt.target.closest('input[type="checkbox"][data-order-id]');
+			if (!cb) return;
+			const orderId = cb.dataset.orderId;
+			if (cb.checked) {
+				this.state.omsSelectedIds[orderId] = true;
+			} else {
+				delete this.state.omsSelectedIds[orderId];
+			}
+			this.updateOmsMergeToolbar();
+		},
+
+		updateOmsMergeToolbar: function () {
+			const count = Object.keys(this.state.omsSelectedIds || {}).length;
+			const toolbar = document.getElementById('omsMergeToolbar');
+			toolbar.style.display = count > 0 ? 'flex' : 'none';
+			document.getElementById('omsMergeSelectedCount').textContent = this.formatT('omsMergeSelectedCount', { count: count });
+		},
+
+		clearOmsSelection: function () {
+			this.state.omsSelectedIds = {};
+			document.querySelectorAll('#omsBody input[type="checkbox"][data-order-id]').forEach((cb) => { cb.checked = false; });
+			this.updateOmsMergeToolbar();
+		},
+
+		openOrderDetailModal: async function (orderId) {
+			const row = (this.state.omsRows || []).find((r) => {
+				return String(this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID'])) === String(orderId);
+			});
+			if (!row) {
+				this.toast(this.t('toastOrderNotFound'), 'error');
+				return;
+			}
+
+			const detailRows = [
+				[this.t('hOrderId'), this.getRowValue(row, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID']) || '-'],
+				[this.t('hClient'), this.getRowValue(row, ['Client']) || '-'],
+				[this.t('hSku'), this.getRowValue(row, ['Mã hàng', 'SKU']) || '-'],
+				[this.t('hQty'), this.getRowValue(row, ['Số lượng', 'Qty']) || '-'],
+				[this.t('fUom'), this.getRowValue(row, ['UOM']) || '-'],
+				[this.t('hFrom'), this.translateLocation(this.getRowValue(row, ['Nơi đi']) || '-')],
+				[this.t('hTo'), this.translateLocation(this.getRowValue(row, ['Nơi đến']) || '-')],
+				[this.t('hFlock'), this.getRowValue(row, ['FLOCK_ID', 'FLOCK ID', 'Flock ID']) || '-'],
+				[this.t('fPickupDate'), this.formatDate(this.getRowValue(row, ['Ngày lấy hàng']))],
+				[this.t('fEtaDate'), this.formatDate(this.getRowValue(row, ['Ngày giao hàng (Dự kiến)']))],
+				[this.t('hStatus'), this.displayOrderStatus(this.getRowValue(row, ['Status']) || '-')],
+				[this.t('hTmsOrderId'), this.getRowValue(row, ['TMS_Order ID']) || '-'],
+				[this.t('hCreateDate'), this.formatDate(this.getRowValue(row, ['Create Date', 'Create date', 'Ngày tạo đơn hàng']))],
+				[this.t('labelNote'), this.getRowValue(row, ['Note']) || '-']
+			];
+
+			const detailHtml =
+				'<div class="table-wrap" style="margin-bottom:10px;">' +
+				'<table class="erp-table"><tbody>' +
+				detailRows.map((item) => '<tr><th style="width:220px;">' + this.escape(item[0]) + '</th><td>' + this.escape(String(item[1])) + '</td></tr>').join('') +
+				'</tbody></table></div>' +
+				'<div id="orderTraceBox" class="state-box">' + this.escape(this.t('msgLoadingTransactions')) + '</div>';
+
+			ErpModal.open({
+				title: this.t('orderDetailTitle'),
+				size: 'lg',
+				submitLabel: this.t('commonCancel'),
+				bodyHtml: detailHtml,
+				onOpen: async () => {
+					try {
+						const traceResp = await this.rpc('getOrderTraceability', orderId);
+						const trace = traceResp.data || {};
+						const factoryRows = trace.factory || [];
+						const farmRows = trace.farm || [];
+						document.getElementById('orderTraceBox').innerHTML =
+							'<div style="font-weight:600;margin-bottom:6px;">' + this.escape(this.t('orderTraceTitle')) + '</div>' +
+							'<div>' + this.escape(this.t('orderTraceFactory')) + ': <b>' + this.escape(String(factoryRows.length)) + '</b></div>' +
+							'<div>' + this.escape(this.t('orderTraceFarm')) + ': <b>' + this.escape(String(farmRows.length)) + '</b></div>';
+					} catch (err) {
+						document.getElementById('orderTraceBox').innerHTML = '<div style="color:#b3261e;">' + this.escape(err.message || this.t('toastOrderTraceFailed')) + '</div>';
+					}
+				}
+			});
+
+			document.getElementById('erpModalSubmitBtn').style.display = 'none';
+		},
+
+		openEditOrderModal: function (orderId) {
+			const row = (this.state.omsRows || []).find((r) => {
+				return String(this.getRowValue(r, ['Order ID', 'ORDER ID', 'WMS_Order ID', 'TMS_ORDER ID'])) === String(orderId);
+			});
+			if (!row) {
+				this.toast(this.t('toastOrderNotFound'), 'error');
+				return;
+			}
+
+			const locationSet = {};
+			const locationOptions = this.state.configs
+				.map((c) => String(c['Managed by'] || c.Tenant || '').trim())
+				.filter((name) => {
+					if (!name) return false;
+					const key = name.toLowerCase();
+					if (locationSet[key]) return false;
+					locationSet[key] = true;
+					return true;
+				})
+				.map((name) => '<option value="' + this.escapeAttr(name) + '">' + this.escape(name) + '</option>')
+				.join('');
+
+			const skuOptions = this.state.products.map((p) => {
+				const name = String(p['Tên hàng hóa'] || '').trim();
+				return '<option value="' + this.escapeAttr(name) + '">' + this.escape(name) + '</option>';
+			}).join('');
+
+			const buildFlockOptions = (destinationName, selectedValue) => {
+				const normalizedDest = String(destinationName || '').trim().toLowerCase();
+				const allFlocks = this.state.configs.filter((c) => String(c.FLOCK_ID || '').trim() !== '');
+				const scoped = allFlocks.filter((c) => String(c.Tenant || '').trim().toLowerCase() === normalizedDest);
+				const source = scoped.length > 0 ? scoped : allFlocks;
+				const options = ['<option value="">' + this.escape(this.t('selectFlock')) + '</option>']
+					.concat(source.map((c) => {
+						const flockName = String(c.FLOCK_NAME || c.FLOCK_ID || '').trim();
+						const flockId = String(c.FLOCK_ID || '').trim();
+						const tenantName = String(c.Tenant || '').trim();
+						const selected = selectedValue && selectedValue.toLowerCase() === flockName.toLowerCase() ? ' selected' : '';
+						return '<option value="' + this.escapeAttr(flockName) + '" data-flock-id="' + this.escapeAttr(flockId) + '"' + selected + '>' +
+							this.escape(flockName + ' (' + flockId + ')' + (tenantName ? ' - ' + tenantName : '')) +
+							'</option>';
+					}))
+					.join('');
+				return options;
+			};
+
+			ErpModal.open({
+				title: this.t('orderEditTitle'),
+				size: 'lg',
+				bodyHtml:
+					'<div class="form-grid">' +
+					this.formField(this.t('hOrderId'), '<input class="form-control" id="e_order_id" disabled value="' + this.escapeAttr(orderId) + '">') +
+					this.formField(this.t('hStatus'), '<select class="form-control" id="e_status">' +
+						'<option value="Lên kế hoạch">' + this.escape(this.t('statusPlanned')) + '</option>' +
+						'<option value="Đã lấy hàng">' + this.escape(this.t('statusPickedUp')) + '</option>' +
+						'<option value="Chờ giao hàng">' + this.escape(this.t('statusInTransit')) + '</option>' +
+						'<option value="Hoàn tất">' + this.escape(this.t('statusCompleted')) + '</option>' +
+						'</select>') +
+					this.formField(this.t('fClient'), '<input class="form-control" id="e_client" value="' + this.escapeAttr(this.getRowValue(row, ['Client']) || '') + '">') +
+					this.formField(this.t('fSku'), '<select class="form-control" id="e_sku">' + skuOptions + '</select>') +
+					this.formField(this.t('fQty'), '<input class="form-control" id="e_qty" type="number" min="1" value="' + this.escapeAttr(String(this.getRowValue(row, ['Số lượng', 'Qty']) || '')) + '">') +
+					this.formField(this.t('fUom'), '<input class="form-control" id="e_uom" value="' + this.escapeAttr(this.getRowValue(row, ['UOM']) || '') + '">') +
+					this.formField(this.t('fFrom'), '<select class="form-control" id="e_from">' + locationOptions + '</select>') +
+					this.formField(this.t('fTo'), '<select class="form-control" id="e_to">' + locationOptions + '</select>') +
+					this.formField(this.t('fFlock'), '<select class="form-control" id="e_flock_name"></select>') +
+					this.formField(this.t('fPickupDate'), '<div class="date-proxy"><input class="form-control date-proxy-display" id="e_pick_display" type="text" placeholder="dd/mm/yyyy" readonly><input class="date-proxy-native" id="e_pick" type="date" aria-label="' + this.escapeAttr(this.t('fPickupDate')) + '"></div>') +
+					this.formField(this.t('fEtaDate'), '<div class="date-proxy"><input class="form-control date-proxy-display" id="e_eta_display" type="text" placeholder="dd/mm/yyyy" readonly><input class="date-proxy-native" id="e_eta" type="date" aria-label="' + this.escapeAttr(this.t('fEtaDate')) + '"></div>') +
+					this.formField(this.t('labelNote'), '<textarea class="form-control" id="e_note" rows="2">' + this.escape(this.getRowValue(row, ['Note']) || '') + '</textarea>', true) +
+					'</div>',
+				onOpen: () => {
+					const skuVal = String(this.getRowValue(row, ['Mã hàng', 'SKU']) || '');
+					const mappedProduct = this.state.products.find((p) => String(p.SKU || '').trim().toLowerCase() === skuVal.toLowerCase());
+					const productNameVal = mappedProduct ? String(mappedProduct['Tên hàng hóa'] || '').trim() : skuVal;
+					const statusVal = String(this.getRowValue(row, ['Status']) || 'Lên kế hoạch');
+					const fromVal = String(this.getRowValue(row, ['Nơi đi']) || '');
+					const toVal = String(this.getRowValue(row, ['Nơi đến']) || '');
+					const flockIdVal = String(this.getRowValue(row, ['FLOCK_ID', 'FLOCK ID', 'Flock ID']) || '');
+					const pickVal = this.toIsoDateInput(this.getRowValue(row, ['Ngày lấy hàng']));
+					const etaVal = this.toIsoDateInput(this.getRowValue(row, ['Ngày giao hàng (Dự kiến)']));
+					const skuEl = document.getElementById('e_sku');
+					const statusEl = document.getElementById('e_status');
+					const fromEl = document.getElementById('e_from');
+					const toEl = document.getElementById('e_to');
+					const flockEl = document.getElementById('e_flock_name');
+					const pickEl = document.getElementById('e_pick');
+					const etaEl = document.getElementById('e_eta');
+					if (skuEl) skuEl.value = productNameVal;
+					if (statusEl) statusEl.value = statusVal;
+					if (fromEl) fromEl.value = fromVal;
+					if (toEl) toEl.value = toVal;
+					if (flockEl) {
+						const allFlocks = this.state.configs.filter((c) => String(c.FLOCK_ID || '').trim() !== '');
+						const matchedFlock = allFlocks.find((c) => String(c.FLOCK_ID || '').trim() === flockIdVal);
+						const initialFlockName = matchedFlock ? String(matchedFlock.FLOCK_NAME || matchedFlock.FLOCK_ID || '').trim() : '';
+						const renderFlockOptions = () => {
+							flockEl.innerHTML = buildFlockOptions(toEl ? toEl.value : '', initialFlockName);
+						};
+						renderFlockOptions();
+						if (toEl) {
+							toEl.addEventListener('change', () => {
+								flockEl.innerHTML = buildFlockOptions(toEl.value, '');
+							});
+						}
+					}
+					if (pickEl) pickEl.value = pickVal;
+					if (etaEl) etaEl.value = etaVal;
+					this.bindDateDisplayProxy('e_pick', 'e_pick_display');
+					this.bindDateDisplayProxy('e_eta', 'e_eta_display');
+				},
+				onSubmit: async () => {
+					try {
+						ErpModal.setSubmitting(true);
+						const targetStatus = this.value('e_status');
+						const currentStatus = String(this.getRowValue(row, ['Status']) || '').trim();
+						const payload = {
+							Client: this.value('e_client'),
+							'Mã hàng': this.value('e_sku'),
+							'Số lượng': Number(this.value('e_qty')),
+							UOM: this.value('e_uom'),
+							'Nơi đi': this.value('e_from'),
+							'Nơi đến': this.value('e_to'),
+							FLOCK_NAME: this.value('e_flock_name'),
+							'Ngày lấy hàng': this.value('e_pick'),
+							'Ngày giao hàng (Dự kiến)': this.value('e_eta'),
+							Note: this.value('e_note')
+						};
+						await this.rpc('updateOrder', orderId, payload);
+						if (targetStatus && targetStatus !== currentStatus) {
+							await this.rpc('updateOrderStatus', orderId, targetStatus);
+						}
+						ErpModal.close();
+						this.toast(this.t('toastOrderUpdateOk'), 'success');
+						this.loadOms(true);
+						this.loadDashboard(true);
+					} catch (err) {
+						this.toast(err.message || this.t('toastOrderUpdateFailed'), 'error');
+					} finally {
+						ErpModal.setSubmitting(false);
+					}
+				}
+			});
+		},
+
+		/**
+		* Ghép các Order đang được tick chọn (checkbox trong bảng OMS) thành 1 lô
+		* TMS duy nhất — gọi createTmsIds() với đúng 1 nhóm.
+		*/
+		mergeSelectedOrdersToTms: async function () {
+			const orderIds = Object.keys(this.state.omsSelectedIds || {});
+			if (orderIds.length === 0) return;
+			const ok = await ErpDialog.confirm({
+				title: this.t('confirmMergeSelectedTitle'),
+				message: this.formatT('confirmMergeSelectedMsg', { count: orderIds.length }),
+				type: 'info',
+				okLabel: this.t('btnOmsMergeSelectedLabel')
+			});
+			if (!ok) return;
+			try {
+				const resp = await this.rpc('createTmsIds', [orderIds]);
+				this.toast(this.formatT('toastTmsCreateOk', { count: (resp.data || []).length }), 'success');
+				this.clearOmsSelection();
+				this.loadOms(true);
+			} catch (err) {
+				this.toast(err.message || this.t('toastTmsCreateFailed'), 'error');
+			}
+		},
+
+		assignTmsForAllUnfinishedOrders: async function () {
+			const ok = await ErpDialog.confirm({
+				title: this.t('confirmAssignTmsAllTitle'),
+				message: this.t('confirmAssignTmsAllMsg'),
+				type: 'info',
+				okLabel: this.t('btnOmsAssignTmsAllLabel')
+			});
+			if (!ok) return;
+			try {
+				const resp = await this.rpc('createTmsIdsForUnfinishedOrders');
+				this.toast(this.formatT('toastTmsCreateOk', { count: (resp.data || []).length }), 'success');
+				this.clearOmsSelection();
+				this.loadOms(true);
+			} catch (err) {
+				this.toast(err.message || this.t('toastTmsCreateFailed'), 'error');
+			}
+		},
+
+		/**
+		* Modal gợi ý ghép đơn — gọi getOrderMergeSuggestions() (filter/group thuần
+		* JS ở BE, không phải hard rule), hiển thị từng nhóm kèm checkbox để user
+		* chọn nhóm nào muốn thực sự tạo TMS. User được tự do bỏ chọn nhóm không
+		* ưng ý — gợi ý không tự động ràng buộc gì.
+		*/
+		openOrderMergeSuggestModal: async function () {
+			try {
+				const resp = await this.rpc('getOrderMergeSuggestions');
+				const groups = resp.data || [];
+
+				if (groups.length === 0) {
+					ErpModal.open({
+						title: this.t('mergeSuggestTitle'),
+						bodyHtml: '<div class="state-box"><span class="material-symbols-outlined">inbox</span><span>' + this.escape(this.t('mergeSuggestEmpty')) + '</span></div>',
+						submitLabel: this.t('commonCancel')
+					});
+					document.getElementById('erpModalSubmitBtn').style.display = 'none';
+					return;
+				}
+
+				const groupsHtml = groups.map((g, idx) => {
+					const dest = (g.key && g.key['Nơi đến']) || '-';
+					const pickupDate = (g.key && g.key['Ngày lấy hàng']) || '-';
+					const weight = Number(g.totalWeightTon || 0).toFixed(2);
+					return '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer;">' +
+						'<input type="checkbox" data-group-index="' + idx + '" checked style="margin-top:3px;">' +
+						'<div>' +
+						'<div style="font-weight:700;font-size:13px;">' + this.escape(this.formatT('mergeSuggestGroupLabel', { index: idx + 1 })) + '</div>' +
+						'<div style="font-size:12px;color:#64748b;margin-top:2px;">' +
+						this.escape(this.t('mergeSuggestDestination')) + ': ' + this.escape(dest) + ' &nbsp;|&nbsp; ' +
+						this.escape(this.t('mergeSuggestPickupDate')) + ': ' + this.escape(pickupDate) + ' &nbsp;|&nbsp; ' +
+						this.escape(this.t('mergeSuggestWeight')) + ': ' + weight +
+						'</div>' +
+						'<div style="font-size:12px;margin-top:4px;">' + this.escape(this.t('mergeSuggestOrders')) + ': ' + this.escape((g.orderIds || []).join(', ')) + '</div>' +
+						'</div>' +
+						'</label>';
+				}).join('');
+
+				ErpModal.open({
+					title: this.t('mergeSuggestTitle'),
+					size: 'lg',
+					submitLabel: this.t('btnCreateTmsSelectedGroups'),
+					bodyHtml: '<p style="font-size:12.5px;color:#64748b;margin-top:0;">' + this.escape(this.t('mergeSuggestDesc')) + '</p>' + groupsHtml,
+					onSubmit: async () => {
+						const checked = Array.from(document.querySelectorAll('#erpModalBody input[data-group-index]:checked'));
+						if (checked.length === 0) {
+							this.toast(this.t('msgNoMergeSuggestGroupSelected'), 'warning');
+							return;
+						}
+						const selectedGroups = checked.map((cb) => groups[Number(cb.dataset.groupIndex)].orderIds);
+						try {
+							ErpModal.setSubmitting(true);
+							const resp = await this.rpc('createTmsIds', selectedGroups);
+							ErpModal.close();
+							this.toast(this.formatT('toastTmsCreateOk', { count: (resp.data || []).length }), 'success');
+							this.clearOmsSelection();
+							this.loadOms(true);
+						} catch (err) {
+							this.toast(err.message || this.t('toastTmsCreateFailed'), 'error');
+						} finally {
+							ErpModal.setSubmitting(false);
+						}
+					}
+				});
+			} catch (err) {
+				this.toast(err.message || this.t('toastMergeSuggestFailed'), 'error');
+			}
+		},
+
+		loadWms: async function () {
+			const invHead = document.getElementById('wmsCurrentInfoHead');
+			const invBody = document.getElementById('wmsCurrentInfoBody');
+			const txnBody = document.getElementById('wmsTxnBody');
+			if (invHead) invHead.innerHTML = '';
+			invBody.innerHTML = '<tr><td colspan="8"><div class="state-box">' + this.escape(this.t('msgLoadingInventory')) + '</div></td></tr>';
+			txnBody.innerHTML = '<tr><td colspan="8"><div class="state-box">' + this.escape(this.t('msgLoadingTransactions')) + '</div></td></tr>';
+			try {
+				const flockId = String(this.state.wmsFlock || '').trim();
+				if (!flockId) {
+					invBody.innerHTML = '<tr><td colspan="8"><div class="state-box">' + this.escape(this.t('msgSelectFlockSummary')) + '</div></td></tr>';
+					txnBody.innerHTML = '<tr><td colspan="8"><div class="state-box">' + this.escape(this.t('msgSelectFlockLog')) + '</div></td></tr>';
+					return;
+				}
+
+				const cfg = (this.state.configs || []).find((c) => String(c.FLOCK_ID || '').trim() === flockId) || null;
+				const tenantId = cfg ? String(cfg.Tenant_id || '').trim() : '';
+
+				const [wmsResp, farmInfoResp] = await Promise.all([
+					this.rpc('getWmsTransactionHistory', 'farm', { FLOCK_ID: flockId }),
+					this.rpc('getFarmOrderInfo', flockId)
+				]);
+
+				const allRows = (wmsResp.data || []).filter((r) => {
+					if (tenantId && String(r.Tenant_id || '').trim() && String(r.Tenant_id || '').trim() !== tenantId) return false;
+					return String(r.FLOCK_ID || '').trim() === flockId;
+				});
+				this.state.wmsInventoryRows = allRows;
+
+				const currentInfo = (farmInfoResp && farmInfoResp.data) || null;
+				this.renderCurrentInventoryTable(currentInfo);
+
+				document.getElementById('wmsTxnHead').innerHTML =
+					'<tr>' +
+					'<th>' + this.escape(this.t('hDate')) + '</th>' +
+					'<th>' + this.escape(this.t('hSku')) + '</th>' +
+					'<th>' + this.escape(this.t('hTxnType')) + '</th>' +
+					'<th>' + this.escape(this.t('hFlock')) + '</th>' +
+					'<th>' + this.escape(this.t('hBeginQty')) + '</th>' +
+					'<th>' + this.escape(this.t('hIn')) + '</th>' +
+					'<th>' + this.escape(this.t('hOut')) + '</th>' +
+					'<th>' + this.escape(this.t('hEndQty')) + '</th>' +
+					'</tr>';
+
+				txnBody.innerHTML = allRows.length === 0
+					? '<tr><td colspan="8"><div class="state-box">' + this.escape(this.t('msgNoTransactions')) + '</div></td></tr>'
+					: allRows.slice(0, 200).map((r) =>
+						'<tr>' +
+						'<td>' + this.formatDate(r.DATE) + '</td>' +
+						'<td>' + this.escape(r.SKU || '-') + '</td>' +
+						'<td>' + this.escape(r['Loại giao dịch'] || '-') + '</td>' +
+						'<td>' + this.escape(r.FLOCK_ID || '-') + '</td>' +
+						'<td>' + this.escape(String(this.roundUpNumber(r.Begin_qtty))) + '</td>' +
+						'<td>' + this.escape(String(this.roundUpNumber(r.In_qtty))) + '</td>' +
+						'<td>' + this.escape(String(this.roundUpNumber(r.Out_qtty))) + '</td>' +
+						'<td>' + this.escape(String(this.roundUpNumber(r.End_qtty))) + '</td>' +
+						'</tr>'
+					).join('');
+				this.state.loadedViews.wms = true;
+			} catch (err) {
+				invBody.innerHTML = '<tr><td colspan="8"><div class="state-box" style="color:#b3261e;">' + this.escape(err.message || this.t('toastWmsFailed')) + '</div></td></tr>';
+				txnBody.innerHTML = invBody.innerHTML;
+			}
+		},
+
+		renderCurrentInventoryTable: function (info) {
+			const head = document.getElementById('wmsCurrentInfoHead');
+			const body = document.getElementById('wmsCurrentInfoBody');
+			if (!body) return;
+			if (head) {
+				head.innerHTML =
+					'<tr>' +
+					'<th>' + this.escape(this.t('hFlock')) + '</th>' +
+					'<th>' + this.escape(this.t('hFlockName')) + '</th>' +
+					'<th>' + this.escape(this.t('hSku')) + '</th>' +
+					'<th>' + this.escape(this.t('hWarningLabel')) + '</th>' +
+					'<th>' + this.escape(this.t('hCurrentStock')) + '</th>' +
+					'<th>' + this.escape(this.t('hStockLevelPercent')) + '</th>' +
+					'<th>' + this.escape(this.t('hDate1')) + '</th>' +
+					'<th>' + this.escape(this.t('hDate2')) + '</th>' +
+					'</tr>';
+			}
+			if (!info) {
+				body.innerHTML = '<tr><td colspan="8"><div class="state-box">' + this.escape(this.t('msgNoInventory')) + '</div></td></tr>';
+				return;
+			}
+
+			const warning = String(info.warningLabel || '').trim();
+			const warningBadge = warning
+				? '<span class="badge ' + this.badgeClass(warning) + '">' + this.escape(this.displayThreshold(warning)) + '</span>'
+				: '-';
+
+			body.innerHTML =
+				'<tr>' +
+				'<td>' + this.escape(info.flockId || '-') + '</td>' +
+				'<td>' + this.escape(info.flockName || '-') + '</td>' +
+				'<td>' + this.escape(info.feedName || '-') + '</td>' +
+				'<td>' + warningBadge + '</td>' +
+				'<td>' + this.escape(String(this.roundUpNumber(info.currentInventory))) + '</td>' +
+				'<td>' + this.escape(this.formatPercent2(info.stockLevelPercentage)) + '</td>' +
+				'<td>' + this.escape(info.date1 ? this.formatDate(info.date1) : '-') + '</td>' +
+				'<td>' + this.escape(info.date2 ? this.formatDate(info.date2) : '-') + '</td>' +
+				'</tr>';
+		},
+
+		roundUpNumber: function (value) {
+			const num = Number(value);
+			if (!Number.isFinite(num)) return 0;
+			return Math.ceil(num);
+		},
+
+		formatPercent2: function (value) {
+			if (value === null || value === undefined || String(value).trim() === '') return '-';
+			const raw = String(value).trim();
+			const cleaned = raw.replace(/%/g, '').replace(/,/g, '').trim();
+			const num = Number(cleaned);
+			if (!Number.isFinite(num)) return this.escape(raw);
+			return num.toFixed(2) + '%';
+		},
+
+		loadFms: async function () {
+			const flockId = document.getElementById('fmsFlockFilter').value;
+			if (!flockId) {
+				this.state.fmsLogRows = [];
+				this.state.fmsLogPage = 1;
+				document.getElementById('fmsSummaryCard').innerHTML = '<h3>' + this.escape(this.t('fmsSummaryTitle')) + '</h3><div class="state-box">' + this.escape(this.t('msgSelectFlockSummary')) + '</div>';
+				document.getElementById('fmsBody').innerHTML = '<tr><td colspan="6"><div class="state-box">' + this.escape(this.t('msgSelectFlockLog')) + '</div></td></tr>';
+				document.getElementById('fmsHead').innerHTML = '';
+				document.getElementById('fmsLogPagination').innerHTML = '';
+				this.drawLine('fmsPopulationChart', 'fmsPopulationEmpty', [[this.t('hAge'), this.t('chartActual'), this.t('chartEstimate')]]);
+				return;
+			}
+
+			try {
+				const [summaryResp, chartResp, rowsResp] = await Promise.all([
+					this.rpc('getFlockCurrentSummary', flockId),
+					this.rpc('getPopulationChartData', flockId),
+					this.rpc('readFMS', { FLOCK_ID: flockId })
+				]);
+
+				const summary = summaryResp.data;
+				if (summary) {
+					document.getElementById('fmsSummaryCard').innerHTML =
+						'<h3>' + this.escape(this.t('fmsSummaryTitle')) + '</h3>' +
+						'<div class="grid-3">' +
+						this.summaryMetric(this.t('summaryFlock'), summary.FLOCK_ID || '-') +
+						this.summaryMetric(this.t('summaryAgeDay'), summary['Ngày Tuổi'] || '-') +
+						this.summaryMetric(this.t('summaryChickenType'), summary['Loại Gà'] || '-') +
+						this.summaryMetric(this.t('summaryPopulationAct'), summary.POPULATION_act || 0) +
+						this.summaryMetric(this.t('summaryPopulationEst'), summary.POPULATION_est || 0) +
+						this.summaryMetric(this.t('summaryFeedEnd'), summary.FEED_end_qtty || 0) +
+						'</div>';
+				}
+
+				const chartRows = (chartResp.data || []).map((r) => [Number(r['Ngày Tuổi']) || 0, Number(r.POPULATION_act) || 0, Number(r.POPULATION_est) || 0]);
+				chartRows.unshift([this.t('hAge'), this.t('chartActual'), this.t('chartEstimate')]);
+				this.drawLine('fmsPopulationChart', 'fmsPopulationEmpty', chartRows);
+
+				const rows = (rowsResp.data || [])
+					.filter((r) => {
+						const age = Number(r['Ngày Tuổi']);
+						return Number.isFinite(age) && age >= 0 && age <= 125;
+					})
+					.slice()
+					.sort((a, b) => {
+						const ageDiff = Number(a['Ngày Tuổi']) - Number(b['Ngày Tuổi']);
+						if (ageDiff !== 0) return ageDiff;
+						return this.toUnixTime(a.DATE) - this.toUnixTime(b.DATE);
+					});
+				this.state.fmsLogRows = rows;
+				this.state.fmsLogPage = 1;
+				document.getElementById('fmsHead').innerHTML =
+					'<tr>' +
+					'<th>' + this.escape(this.t('hDate')) + '</th>' +
+					'<th>' + this.escape(this.t('hAge')) + '</th>' +
+					'<th>' + this.escape(this.t('hMortAct')) + '</th>' +
+					'<th>' + this.escape(this.t('hPopulationAct')) + '</th>' +
+					'<th>' + this.escape(this.t('hPopulationEst')) + '</th>' +
+					'<th>' + this.escape(this.t('hFeedUseEst')) + '</th>' +
+					'</tr>';
+				this.renderFmsLogPage();
+				this.state.loadedViews.fms = true;
+			} catch (err) {
+				this.toast(err.message || this.t('toastFmsFailed'), 'error');
+			}
+		},
+
+		handleFmsLogPaginationClick: function (evt) {
+			const btn = evt.target.closest('[data-page]');
+			if (!btn) return;
+			const page = Number(btn.getAttribute('data-page'));
+			if (!Number.isFinite(page) || page < 1) return;
+			if (page === this.state.fmsLogPage) return;
+			this.state.fmsLogPage = page;
+			this.renderFmsLogPage();
+		},
+
+		sortFmsRowsBySeverity: function (rows) {
+			return rows.slice().sort((a, b) => {
+				const rankDiff = this.thresholdSeverityRank(b['Inventory Thresholds']) - this.thresholdSeverityRank(a['Inventory Thresholds']);
+				if (rankDiff !== 0) return rankDiff;
+				return this.toUnixTime(b.DATE) - this.toUnixTime(a.DATE);
+			});
+		},
+
+		thresholdSeverityRank: function (badge) {
+			const map = {
+				Critical: 5,
+				High: 4,
+				Low: 3,
+				Safe: 2,
+				Zero: 1
+			};
+			return map[String(badge || '')] || 0;
+		},
+
+		toUnixTime: function (value) {
+			if (!value) return 0;
+			const parsed = new Date(value).getTime();
+			if (Number.isFinite(parsed)) return parsed;
+			if (typeof value === 'string') {
+				const match = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+				if (match) {
+					const dd = Number(match[1]);
+					const mm = Number(match[2]);
+					const yyyy = Number(match[3]);
+					const fallback = new Date(yyyy, mm - 1, dd).getTime();
+					return Number.isFinite(fallback) ? fallback : 0;
+				}
+			}
+			return 0;
+		},
+
+		renderFmsLogPage: function () {
+			const rows = this.state.fmsLogRows || [];
+			const body = document.getElementById('fmsBody');
+			const pagination = document.getElementById('fmsLogPagination');
+			if (rows.length === 0) {
+				body.innerHTML = '<tr><td colspan="6"><div class="state-box">' + this.escape(this.t('msgNoFmsData')) + '</div></td></tr>';
+				pagination.innerHTML = '';
+				return;
+			}
+
+			const pageSize = Number(this.state.fmsLogPageSize) || 20;
+			const total = rows.length;
+			const totalPages = Math.max(1, Math.ceil(total / pageSize));
+			let page = Number(this.state.fmsLogPage) || 1;
+			if (page > totalPages) page = totalPages;
+			if (page < 1) page = 1;
+			this.state.fmsLogPage = page;
+
+			const start = (page - 1) * pageSize;
+			const end = Math.min(start + pageSize, total);
+			const pageRows = rows.slice(start, end);
+
+			body.innerHTML = pageRows.map((r) =>
+				'<tr>' +
+				'<td>' + this.formatDate(r.DATE) + '</td>' +
+				'<td>' + this.escape(String(r['Ngày Tuổi'] || '')) + '</td>' +
+				'<td>' + this.escape(String(r.MORT_act || 0)) + '</td>' +
+				'<td>' + this.escape(String(r.POPULATION_act || '')) + '</td>' +
+				'<td>' + this.escape(String(r.POPULATION_est || '')) + '</td>' +
+				'<td>' + this.escape(String(this.getRowValue(r, ['FEED_QTY_USE_est', 'FEED_est', 'FEED_USE_est', 'Feed_est']) || '')) + '</td>' +
+				'</tr>'
+			).join('');
+
+			const info = this.formatT('paginationInfo', {
+				from: start + 1,
+				to: end,
+				total: total
+			});
+
+			let startPage = Math.max(1, page - 2);
+			let endPage = Math.min(totalPages, startPage + 4);
+			startPage = Math.max(1, endPage - 4);
+
+			const pageButtons = [];
+			for (let p = startPage; p <= endPage; p++) {
+				pageButtons.push('<button class="page-btn ' + (p === page ? 'is-active' : '') + '" data-page="' + p + '">' + p + '</button>');
+			}
+
+			pagination.innerHTML =
+				'<div>' + this.escape(info) + '</div>' +
+				'<div class="pagination-controls">' +
+				'<button class="page-btn" data-page="' + (page - 1) + '" ' + (page <= 1 ? 'disabled' : '') + '>' + this.escape(this.t('pagePrev')) + '</button>' +
+				pageButtons.join('') +
+				'<button class="page-btn" data-page="' + (page + 1) + '" ' + (page >= totalPages ? 'disabled' : '') + '>' + this.escape(this.t('pageNext')) + '</button>' +
+				'</div>';
+		},
+
+		loadSetup: async function () {
+			try {
+				const [configResp, productResp, feedResp, policyResp] = await Promise.all([
+					this.rpc('getConfigList'),
+					this.rpc('getProductMasterList'),
+					this.rpc('getFeedStandardList'),
+					this.rpc('getPolicyThresholds')
+				]);
+				const configs = configResp.data || [];
+				const products = productResp.data || [];
+				const feedRows = feedResp.data || [];
+				const policyRows = policyResp.data || [];
+
+				const feedSearch = (document.getElementById('setupFeedSearch').value || '').trim().toLowerCase();
+				const policySearch = (document.getElementById('setupPolicySearch').value || '').trim().toLowerCase();
+
+				const filteredFeed = !feedSearch ? feedRows : feedRows.filter((r) => {
+					const target = [r['Loại Gà'], r['Loại cám'], r['Ngày Tuổi']].join(' ').toLowerCase();
+					return target.indexOf(feedSearch) !== -1;
+				});
+
+				const filteredPolicy = !policySearch ? policyRows : policyRows.filter((r) => {
+					const target = [r['Mã hàng'], r.status, r.note].join(' ').toLowerCase();
+					return target.indexOf(policySearch) !== -1;
+				});
+
+				document.getElementById('setupConfigHead').innerHTML = '<tr><th>Tenant_id</th><th>' + this.escape(this.t('hTenant')) + '</th><th>' + this.escape(this.t('hSystem')) + '</th><th>' + this.escape(this.t('hFlock')) + '</th></tr>';
+				document.getElementById('setupConfigBody').innerHTML = configs.length === 0
+					? '<tr><td colspan="4"><div class="state-box">' + this.escape(this.t('msgNoConfig')) + '</div></td></tr>'
+					: configs.slice(0, 120).map((r) => '<tr><td>' + this.escape(r.Tenant_id || '') + '</td><td>' + this.escape(r.Tenant || '') + '</td><td>' + this.escape(r.SYSTEM || '') + '</td><td>' + this.escape(r.FLOCK_ID || '-') + '</td></tr>').join('');
+
+				document.getElementById('setupProductHead').innerHTML = '<tr><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hProductName')) + '</th><th>UOM</th><th>' + this.escape(this.t('hStatus')) + '</th></tr>';
+				document.getElementById('setupProductBody').innerHTML = products.length === 0
+					? '<tr><td colspan="4"><div class="state-box">' + this.escape(this.t('msgNoProduct')) + '</div></td></tr>'
+					: products.slice(0, 120).map((r) => '<tr><td>' + this.escape(r.SKU || '') + '</td><td>' + this.escape(r['Tên hàng hóa'] || '') + '</td><td>' + this.escape(r.UOM || '') + '</td><td>' + this.escape(r.Status || '') + '</td></tr>').join('');
+
+				document.getElementById('setupFeedHead').innerHTML = '<tr><th>' + this.escape(this.t('fChickenType')) + '</th><th>' + this.escape(this.t('hAge')) + '</th><th>' + this.escape(this.t('fFeedUse')) + '</th><th>' + this.escape(this.t('fFeedType')) + '</th></tr>';
+				document.getElementById('setupFeedBody').innerHTML = filteredFeed.length === 0
+					? '<tr><td colspan="4"><div class="state-box">' + this.escape(this.t('msgNoFeedMatch')) + '</div></td></tr>'
+					: filteredFeed.slice(0, 160).map((r) =>
+						'<tr>' +
+						'<td>' + this.escape(r['Loại Gà'] || '') + '</td>' +
+						'<td>' + this.escape(String(r['Ngày Tuổi'] || '')) + '</td>' +
+						'<td>' + this.escape(String(r['TĂ sử dụng (g/c/n)'] || '')) + '</td>' +
+						'<td>' + this.escape(r['Loại cám'] || '') + '</td>' +
+						'</tr>'
+					).join('');
+
+				document.getElementById('setupPolicyHead').innerHTML = '<tr><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hZero')) + '</th><th>' + this.escape(this.t('hCritical')) + '</th><th>' + this.escape(this.t('hLow')) + '</th><th>' + this.escape(this.t('hHigh')) + '</th><th>' + this.escape(this.t('hStatus')) + '</th><th>' + this.escape(this.t('hNote')) + '</th><th>' + this.escape(this.t('hAction')) + '</th></tr>';
+				document.getElementById('setupPolicyBody').innerHTML = filteredPolicy.length === 0
+					? '<tr><td colspan="8"><div class="state-box">' + this.escape(this.t('msgNoPolicyMatch')) + '</div></td></tr>'
+					: filteredPolicy.slice(0, 160).map((r, idx) => {
+						const key = 'pol_' + idx + '_' + this.escapeAttr(String(r['Mã hàng'] || ''));
+						return '<tr>' +
+							'<td>' + this.escape(r['Mã hàng'] || '') + '</td>' +
+							'<td>' + this.escape(String(r.zero_threshold || '')) + '</td>' +
+							'<td>' + this.escape(String(r.critical_threshold || '')) + '</td>' +
+							'<td>' + this.escape(String(r.low_threshold || '')) + '</td>' +
+							'<td>' + this.escape(String(r.high_threshold || '')) + '</td>' +
+							'<td><select id="' + key + '_status" class="form-control"><option value="active" ' + (String(r.status || '').toLowerCase() === 'active' ? 'selected' : '') + '>' + this.escape(this.t('statusActive')) + '</option><option value="inactive" ' + (String(r.status || '').toLowerCase() === 'inactive' ? 'selected' : '') + '>' + this.escape(this.t('statusInactive')) + '</option></select></td>' +
+							'<td><input id="' + key + '_note" class="form-control" value="' + this.escapeAttr(r.note || '') + '"></td>' +
+							'<td><button class="btn btn-outline btn-sm" data-save-policy="' + this.escapeAttr(JSON.stringify({
+								sku: r['Mã hàng'],
+								zero: r.zero_threshold,
+								critical: r.critical_threshold,
+								low: r.low_threshold,
+								high: r.high_threshold,
+								key: key
+							})) + '">' + this.escape(this.t('commonSave')) + '</button></td>' +
+							'</tr>';
+					}).join('');
+				this.state.loadedViews.setup = true;
+			} catch (err) {
+				this.toast(err.message || this.t('toastSetupFailed'), 'error');
+			}
+		},
+
+		openCreateOrderModal: function () {
+			const locationSet = {};
+			const locationOptions = this.state.configs
+				.map((c) => String(c['Managed by'] || c.Tenant || '').trim())
+				.filter((name) => {
+					if (!name) return false;
+					const key = name.toLowerCase();
+					if (locationSet[key]) return false;
+					locationSet[key] = true;
+					return true;
+				})
+				.map((name) => '<option>' + this.escape(name) + '</option>')
+				.join('');
+			const tenantOptions = this.state.configs.map((c) => '<option value="' + this.escapeAttr(c.Tenant_id || '') + '">' + this.escape(c.Tenant_id || '') + '</option>').join('');
+			const productNameOptions = this.state.products
+				.map((p) => '<option value="' + this.escapeAttr(p['Tên hàng hóa'] || '') + '">' + this.escape(p['Tên hàng hóa'] || '') + '</option>')
+				.join('');
+
+			ErpModal.open({
+				title: this.t('btnCreateOrder'),
+				size: 'lg',
+				bodyHtml:
+					'<div class="form-grid">' +
+					this.formField(this.t('fTenantId'), '<select class="form-control" id="m_tenant">' + tenantOptions + '</select>') +
+					this.formField(this.t('fClient'), '<input class="form-control" id="m_client">') +
+					this.formField(this.t('fProductName'), '<select class="form-control" id="m_product_name">' + productNameOptions + '</select>') +
+					this.formField(this.t('fQty'), '<input class="form-control" id="m_qty" type="number" min="1">') +
+					this.formField(this.t('fUom'), '<input class="form-control" id="m_uom" value="Bag">') +
+					this.formField(this.t('fFrom'), '<select class="form-control" id="m_from">' + locationOptions + '</select>') +
+					this.formField(this.t('fTo'), '<select class="form-control" id="m_to">' + locationOptions + '</select>') +
+					this.formField(this.t('fFlock'), '<select class="form-control" id="m_flock_name"></select>') +
+					this.formField(this.t('fPickupDate'), '<div class="date-proxy"><input class="form-control date-proxy-display" id="m_pick_display" type="text" placeholder="dd/mm/yyyy" readonly><input class="date-proxy-native" id="m_pick" type="date" aria-label="' + this.escapeAttr(this.t('fPickupDate')) + '"></div>') +
+					this.formField(this.t('fEtaDate'), '<div class="date-proxy"><input class="form-control date-proxy-display" id="m_eta_display" type="text" placeholder="dd/mm/yyyy" readonly><input class="date-proxy-native" id="m_eta" type="date" aria-label="' + this.escapeAttr(this.t('fEtaDate')) + '"></div>') +
+					this.formField(this.t('labelNote'), '<textarea class="form-control" id="m_note" rows="2"></textarea>', true) +
+					'</div>',
+				onSubmit: async (btn) => {
+					try {
+						ErpModal.setSubmitting(true);
+						const selectedProductName = this.value('m_product_name');
+						const selectedProduct = this.state.products.find((p) =>
+							String(p['Tên hàng hóa'] || '').trim().toLowerCase() === selectedProductName.toLowerCase()
+						);
+						const payload = {
+							Tenant_id: this.value('m_tenant'),
+							Client: this.value('m_client'),
+							'Mã hàng': selectedProduct ? String(selectedProduct['Tên hàng hóa'] || '') : selectedProductName,
+							'Số lượng': Number(this.value('m_qty')),
+							UOM: this.value('m_uom') || (selectedProduct ? String(selectedProduct.UOM || '') : '') || 'Bag',
+							'Nơi đi': this.value('m_from'),
+							'Nơi đến': this.value('m_to'),
+							FLOCK_NAME: this.value('m_flock_name'),
+							'Ngày lấy hàng': this.value('m_pick'),
+							'Ngày giao hàng (Dự kiến)': this.value('m_eta'),
+							Note: this.value('m_note')
+						};
+						await this.rpc('createOrder', payload);
+						ErpModal.close();
+						this.toast(this.t('toastCreateOrderOk'), 'success');
+						this.loadOms(true);
+						this.loadDashboard(true);
+					} catch (err) {
+						this.toast(err.message || this.t('toastCreateOrderFailed'), 'error');
+					} finally {
+						ErpModal.setSubmitting(false);
+					}
+				}
+			});
+
+			setTimeout(() => {
+				const toEl = document.getElementById('m_to');
+				const flockEl = document.getElementById('m_flock_name');
+				const renderCreateFlockOptions = () => {
+					if (!flockEl) return;
+					const destination = toEl ? toEl.value : '';
+					const normalizedDest = String(destination || '').trim().toLowerCase();
+					const allFlocks = this.state.configs.filter((c) => String(c.FLOCK_ID || '').trim() !== '');
+					const scoped = allFlocks.filter((c) => String(c.Tenant || '').trim().toLowerCase() === normalizedDest);
+					const source = scoped.length > 0 ? scoped : allFlocks;
+					flockEl.innerHTML = ['<option value="">' + this.escape(this.t('selectFlock')) + '</option>']
+						.concat(source.map((c) => {
+							const flockName = String(c.FLOCK_NAME || c.FLOCK_ID || '').trim();
+							const flockId = String(c.FLOCK_ID || '').trim();
+							const tenantName = String(c.Tenant || '').trim();
+							return '<option value="' + this.escapeAttr(flockName) + '">' +
+								this.escape(flockName + ' (' + flockId + ')' + (tenantName ? ' - ' + tenantName : '')) +
+								'</option>';
+						}))
+						.join('');
+				};
+				renderCreateFlockOptions();
+				if (toEl) toEl.addEventListener('change', renderCreateFlockOptions);
+				this.bindDateDisplayProxy('m_pick', 'm_pick_display');
+				this.bindDateDisplayProxy('m_eta', 'm_eta_display');
+			}, 0);
+		},
+
+		getSelectedWmsConfig: function () {
+			const flockId = String(this.state.wmsFlock || '').trim();
+			if (!flockId) return null;
+			return (this.state.configs || []).find((c) => String(c.FLOCK_ID || '').trim() === flockId) || null;
+		},
+
+		getWmsManagedByValues: function () {
+			const seen = {};
+			return (this.state.configs || [])
+				.filter((c) => String(c.SYSTEM || '').trim().toUpperCase() === 'WMS')
+				.map((c) => String(c['Managed by'] || c['Managed_by'] || '').trim())
+				.filter((name) => {
+					if (!name) return false;
+					const key = name.toLowerCase();
+					if (seen[key]) return false;
+					seen[key] = true;
+					return true;
+				});
+		},
+
+		openCreateFarmOrderModal: function () {
+			const cfg = this.getSelectedWmsConfig();
+			if (!cfg) {
+				this.toast(this.t('msgSelectFlockSummary'), 'warning');
+				return;
+			}
+
+			ErpModal.open({
+				title: this.t('farmOrderStep1Title'),
+				bodyHtml:
+					'<div class="form-grid">' +
+					this.formField(this.t('farmOrderStorageDays'), '<input class="form-control" id="fo_storage_days" type="number" min="0" step="1" value="0">') +
+					'</div>',
+				submitLabel: this.t('commonNext'),
+				onSubmit: async () => {
+					try {
+						ErpModal.setSubmitting(true);
+						const storageDays = Number(this.value('fo_storage_days'));
+						const resp = await this.rpc('calcSuggestedQty', String(cfg.FLOCK_ID || '').trim(), storageDays);
+						const step1Data = (resp && resp.data) || {};
+						if (step1Data.isEnoughUntilRefDate) {
+							ErpModal.close();
+							this.toast(step1Data.infoMessage || this.t('farmOrderEnoughUntilDate'), 'success');
+							return;
+						}
+						if (!(Number(step1Data.suggestedQtyKg) > 0)) {
+							ErpModal.close();
+							this.toast(step1Data.infoMessage || this.t('farmOrderNoSuggestedQty'), 'warning');
+							return;
+						}
+						ErpModal.close();
+						this.openFarmOrderStep2Modal(cfg, step1Data);
+					} catch (err) {
+						this.toast(err.message || this.t('toastFarmOrderStep1Failed'), 'error');
+					} finally {
+						ErpModal.setSubmitting(false);
+					}
+				}
+			});
+		},
+
+		openFarmOrderStep2Modal: async function (cfg, step1Data) {
+			try {
+				const feedName = String((step1Data && step1Data.feedName) || '').trim();
+				if (!feedName) {
+					this.toast(this.t('msgNoPackagingSku'), 'error');
+					return;
+				}
+
+				const pkgResp = await this.rpc('getPackagingSkusByFeedName', feedName);
+				const packages = pkgResp.data || [];
+				if (packages.length === 0) {
+					this.toast(this.t('msgNoPackagingSku'), 'warning');
+					return;
+				}
+
+				const options = packages.map((p) => {
+					const sku = String(p.SKU || '').trim();
+					const uom = String(p.UOM || '').trim();
+					const weight = Number(p.UOM_weight_kg) || 0;
+					return '<option value="' + this.escapeAttr(sku) + '">' + this.escape(sku + ' | ' + uom + ' | ' + weight + 'kg') + '</option>';
+				}).join('');
+
+				ErpModal.open({
+					title: this.t('farmOrderStep2Title'),
+					size: 'lg',
+					submitLabel: this.t('commonNext'),
+					bodyHtml:
+						'<div class="form-grid">' +
+						this.formField(this.t('farmOrderReferenceDate'), '<input class="form-control" disabled value="' + this.escapeAttr(this.formatDate(step1Data.referenceDate)) + '">') +
+						this.formField(this.t('farmOrderSuggestedQtyKg'), '<input class="form-control" disabled value="' + this.escapeAttr(String(step1Data.suggestedQtyKg || 0)) + '">') +
+						this.formField(this.t('farmOrderPackagingSku'), '<select class="form-control" id="fo_pack_sku">' + options + '</select>') +
+						'<div class="form-group full"><div id="fo_pack_result" class="state-box">' + this.escape(this.t('farmOrderBagPreview')) + '</div></div>' +
+						'</div>',
+						onOpen: () => {
+							const skuEl = document.getElementById('fo_pack_sku');
+							const preview = document.getElementById('fo_pack_result');
+							const refreshPreview = async () => {
+								try {
+									const bagResp = await this.rpc('calcSuggestedBagQty', Number(step1Data.suggestedQtyKg || 0), skuEl.value);
+									const r = bagResp.data || {};
+									preview.textContent = this.formatT('farmOrderBagPreviewValue', { bags: r.suggestedBags || 0, uom: r.uom || '' });
+								} catch (e) {
+									preview.textContent = e.message || this.t('toastFarmOrderStep2Failed');
+								}
+							};
+							skuEl.addEventListener('change', refreshPreview);
+							refreshPreview();
+						}
+					,
+						onSubmit: async () => {
+							try {
+								ErpModal.setSubmitting(true);
+								const packagingSku = this.value('fo_pack_sku');
+								const bagResp = await this.rpc('calcSuggestedBagQty', Number(step1Data.suggestedQtyKg || 0), packagingSku);
+								ErpModal.close();
+								this.openFarmOrderStep3Modal(cfg, step1Data, bagResp.data || {});
+							} catch (err) {
+								this.toast(err.message || this.t('toastFarmOrderStep2Failed'), 'error');
+							} finally {
+								ErpModal.setSubmitting(false);
+							}
+						}
+				});
+			} catch (err) {
+				this.toast(err.message || this.t('toastFarmOrderStep2Failed'), 'error');
+			}
+		},
+
+		openFarmOrderStep3Modal: function (cfg, step1Data, step2Data) {
+			const toName = String(this.state.wmsFarm || cfg.Tenant || '').trim();
+			const fromNameDefault = String(cfg['Managed by'] || cfg['Managed_by'] || '').trim();
+			const managedByOptions = this.getWmsManagedByValues();
+			const fromOptions = managedByOptions.map((name) => {
+				const selected = String(name || '').trim().toLowerCase() === String(fromNameDefault || '').trim().toLowerCase() ? ' selected' : '';
+				return '<option value="' + this.escapeAttr(name) + '"' + selected + '>' + this.escape(name) + '</option>';
+			}).join('');
+
+			ErpModal.open({
+				title: this.t('farmOrderStep3Title'),
+				size: 'lg',
+				submitLabel: this.t('commonSave'),
+				bodyHtml:
+					'<div class="form-grid">' +
+					this.formField(this.t('fTenantId'), '<input class="form-control" id="fo3_tenant" value="' + this.escapeAttr(String(cfg.Tenant_id || '')) + '">') +
+					this.formField(this.t('fClient'), '<input class="form-control" id="fo3_client" value="' + this.escapeAttr(toName) + '">') +
+					this.formField(this.t('fQty'), '<input class="form-control" id="fo3_qty" type="number" min="1" value="' + this.escapeAttr(String(step2Data.suggestedBags || 0)) + '">') +
+					this.formField(this.t('fUom'), '<input class="form-control" id="fo3_uom" value="' + this.escapeAttr(step2Data.uom || 'Bag') + '">') +
+					this.formField(this.t('fFrom'), '<select class="form-control" id="fo3_from">' + fromOptions + '</select>') +
+					this.formField(this.t('fTo'), '<input class="form-control" id="fo3_to_display" value="' + this.escapeAttr(toName) + '" disabled><input id="fo3_to" type="hidden" value="' + this.escapeAttr(toName) + '">') +
+					this.formField(this.t('fEtaDate'), '<div class="date-proxy"><input class="form-control date-proxy-display" id="fo3_eta_display" type="text" placeholder="dd/mm/yyyy" readonly><input class="date-proxy-native" id="fo3_eta" type="date" aria-label="' + this.escapeAttr(this.t('fEtaDate')) + '"></div>') +
+					this.formField(this.t('labelNote'), '<textarea class="form-control" id="fo3_note" rows="2">' + this.escape(this.formatT('farmOrderNoteDefault', { flock: String(cfg.FLOCK_ID || '') })) + '</textarea>', true) +
+					'</div>',
+				onOpen: () => {
+					const etaInput = document.getElementById('fo3_eta');
+					if (etaInput) etaInput.value = this.toIsoDateInput(step1Data.referenceDate);
+					this.bindDateDisplayProxy('fo3_eta', 'fo3_eta_display');
+				},
+				onSubmit: async () => {
+					try {
+						ErpModal.setSubmitting(true);
+						const payload = {
+							Tenant_id: this.value('fo3_tenant'),
+							Client: this.value('fo3_client'),
+							'Mã hàng': step2Data.packagingSku,
+							'Số lượng': Number(this.value('fo3_qty')),
+							UOM: this.value('fo3_uom'),
+							'Nơi đi': this.value('fo3_from'),
+							'Nơi đến': this.value('fo3_to'),
+							'Ngày giao hàng (Dự kiến)': this.value('fo3_eta'),
+							FLOCK_NAME: String(cfg.FLOCK_NAME || cfg.FLOCK_ID || ''),
+							Note: this.value('fo3_note')
+						};
+						await this.rpc('createOrder', payload);
+						ErpModal.close();
+						this.toast(this.t('toastCreateOrderOk'), 'success');
+						this.loadOms(true);
+					} catch (err) {
+						this.toast(err.message || this.t('toastCreateOrderFailed'), 'error');
+					} finally {
+						ErpModal.setSubmitting(false);
+					}
+				}
+			});
+		},
+
+		openTxnModal: function (type) {
+			const cfg = this.getSelectedWmsConfig();
+			if (!cfg) {
+				this.toast(this.t('msgSelectFlockSummary'), 'warning');
+				return;
+			}
+			const selectedFarm = String(this.state.wmsFarm || cfg.Tenant || '').trim();
+            const managedByOptions = this.getWmsManagedByValues();
+            const locationOptions = managedByOptions.map((name) => {
+                return '<option value="' + this.escapeAttr(name) + '">' + this.escape(name) + '</option>';
+            }).join('');
+
+			const tenantOptions = '<option value="' + this.escapeAttr(String(cfg.Tenant_id || '')) + '">' + this.escape(String(cfg.Tenant_id || '')) + '</option>';
+			const feedSkuSet = {};
+			(this.state.wmsInventoryRows || []).forEach((r) => {
+				const sku = String(r.SKU || '').trim();
+				if (!sku) return;
+				feedSkuSet[sku.toLowerCase()] = sku;
+			});
+			const skuOptionsFromRows = Object.keys(feedSkuSet).map((k) => feedSkuSet[k]);
+			const skuOptions = (skuOptionsFromRows.length ? skuOptionsFromRows : this.state.products.map((p) => String(p['Tên hàng hóa'] || '').trim()).filter(Boolean))
+				.map((sku) => '<option value="' + this.escapeAttr(sku) + '">' + this.escape(sku) + '</option>')
+				.join('');
+			const flockOptions = '<option value="' + this.escapeAttr(String(cfg.FLOCK_ID || '')) + '">' + this.escape(String(cfg.FLOCK_ID || '') + ' - ' + String(cfg.FLOCK_NAME || '')) + '</option>';
+			const typeTitle = type === 'Inbound' ? this.t('labelTxnInboundTitle') : this.t('labelTxnOutboundTitle');
+			const locationFields = type === 'Inbound'
+				? (
+					this.formField(this.t('fFrom'), '<select class="form-control" id="tx_from">' + locationOptions + '</select>') +
+					this.formField(this.t('fTo'), '<input class="form-control" id="tx_to_display" value="' + this.escapeAttr(selectedFarm) + '" disabled><input id="tx_to" type="hidden" value="' + this.escapeAttr(selectedFarm) + '">')
+				)
+				: (
+					this.formField(this.t('fFrom'), '<input class="form-control" id="tx_from_display" value="' + this.escapeAttr(selectedFarm) + '" disabled><input id="tx_from" type="hidden" value="' + this.escapeAttr(selectedFarm) + '">') +
+					this.formField(this.t('fTo'), '<select class="form-control" id="tx_to">' + locationOptions + '</select>')
+				);
+			ErpModal.open({
+				title: typeTitle,
+				bodyHtml:
+					'<div class="form-grid">' +
+					this.formField(this.t('fTenantId'), '<select class="form-control" id="tx_tenant">' + tenantOptions + '</select>') +
+					this.formField(this.t('fSku'), '<select class="form-control" id="tx_product_name">' + skuOptions + '</select>') +
+					this.formField(this.t('fQty'), '<input class="form-control" id="tx_qty" type="number" min="1">') +
+					this.formField(this.t('fFlock'), '<select class="form-control" id="tx_flock">' + flockOptions + '</select>') +
+					locationFields +
+					this.formField(this.t('labelNote'), '<input class="form-control" id="tx_note">', true) +
+					'</div>',
+				onSubmit: async () => {
+					try {
+						ErpModal.setSubmitting(true);
+						const selectedProductName = this.value('tx_product_name');
+						const fromLocation = this.value('tx_from');
+						const toLocation = this.value('tx_to');
+						const userNote = this.value('tx_note');
+						const noteWithRoute = ('From: ' + fromLocation + ' | To: ' + toLocation + (userNote ? ' | ' + userNote : '')).trim();
+						await this.rpc('submitInboundOutbound', {
+							scope: 'farm',
+							type: type,
+							Tenant_id: this.value('tx_tenant'),
+							SKU: selectedProductName,
+							qty: Number(this.value('tx_qty')),
+							FLOCK_ID: this.value('tx_flock'),
+							note: noteWithRoute
+						});
+						ErpModal.close();
+						this.toast(this.formatT('toastTxnSaved', { type: typeTitle }), 'success');
+						this.loadWms(true);
+					} catch (err) {
+						this.toast(err.message || this.formatT('toastTxnFailed', { type: typeTitle }), 'error');
+					} finally {
+						ErpModal.setSubmitting(false);
+					}
+				}
+			});
+		},
+
+		openAdjustModal: function () {
+			const cfg = this.getSelectedWmsConfig();
+			if (!cfg) {
+				this.toast(this.t('msgSelectFlockSummary'), 'warning');
+				return;
+			}
+
+			const tenantOptions = '<option value="' + this.escapeAttr(String(cfg.Tenant_id || '')) + '">' + this.escape(String(cfg.Tenant_id || '')) + '</option>';
+			const feedSkuSet = {};
+			(this.state.wmsInventoryRows || []).forEach((r) => {
+				const sku = String(r.SKU || '').trim();
+				if (!sku) return;
+				feedSkuSet[sku.toLowerCase()] = sku;
+			});
+			const skuOptionsFromRows = Object.keys(feedSkuSet).map((k) => feedSkuSet[k]);
+			const productNameOptions = (skuOptionsFromRows.length ? skuOptionsFromRows : this.state.products.map((p) => String(p['Tên hàng hóa'] || '').trim()).filter(Boolean))
+				.map((sku) => '<option value="' + this.escapeAttr(sku) + '">' + this.escape(sku) + '</option>')
+				.join('');
+			const flockOptions = '<option value="' + this.escapeAttr(String(cfg.FLOCK_ID || '')) + '">' + this.escape(String(cfg.FLOCK_ID || '') + ' - ' + String(cfg.FLOCK_NAME || '')) + '</option>';
+			const reasonOptions = [
+				{ value: 'Kiểm kê định kỳ', label: this.t('reasonPeriodic') },
+				{ value: 'Thất thoát', label: this.t('reasonLoss') },
+				{ value: 'Sai lệch nhập liệu', label: this.t('reasonMismatch') },
+				{ value: 'Khác', label: this.t('reasonOther') }
+			].map((item) => '<option value="' + this.escapeAttr(item.value) + '">' + this.escape(item.label) + '</option>').join('');
+			ErpModal.open({
+				title: this.t('wmsAdjust'),
+				bodyHtml:
+					'<div class="form-grid">' +
+					this.formField(this.t('fTenantId'), '<select class="form-control" id="aj_tenant">' + tenantOptions + '</select>') +
+					this.formField(this.t('fSku'), '<select class="form-control" id="aj_product_name">' + productNameOptions + '</select>') +
+					this.formField(this.t('fDeltaQty'), '<input class="form-control" id="aj_delta" type="number">') +
+					this.formField(this.t('fReason'), '<select class="form-control" id="aj_reason">' + reasonOptions + '</select>') +
+					this.formField(this.t('fFlock'), '<select class="form-control" id="aj_flock">' + flockOptions + '</select>') +
+					this.formField(this.t('labelNote'), '<input class="form-control" id="aj_note">', true) +
+					'</div>',
+				onSubmit: async () => {
+					try {
+						ErpModal.setSubmitting(true);
+						await this.rpc('submitAdjustment', {
+								scope: 'farm',
+							Tenant_id: this.value('aj_tenant'),
+								SKU: this.value('aj_product_name'),
+							deltaQty: Number(this.value('aj_delta')),
+							reason: this.value('aj_reason'),
+							FLOCK_ID: this.value('aj_flock'),
+							note: this.value('aj_note')
+						});
+						ErpModal.close();
+						this.toast(this.t('toastAdjustOk'), 'success');
+						this.loadWms(true);
+					} catch (err) {
+						this.toast(err.message || this.t('toastAdjustFailed'), 'error');
+					} finally {
+						ErpModal.setSubmitting(false);
+					}
+				}
+			});
+		},
+
+		openSetupConfigModal: function () {
+			ErpModal.open({
+				title: this.t('setupConfigBtn'),
+				bodyHtml:
+					'<div class="form-grid">' +
+					this.formField(this.t('fSystem'), '<select class="form-control" id="sc_system"><option>WMS</option><option>OMS</option><option>TMS</option></select>') +
+					this.formField(this.t('fTenant'), '<input class="form-control" id="sc_tenant">') +
+					this.formField(this.t('fTenantId'), '<input class="form-control" id="sc_tenant_id">') +
+					this.formField(this.t('fFlock'), '<input class="form-control" id="sc_flock">') +
+					this.formField(this.t('fStandardsApplied'), '<input class="form-control" id="sc_std" list="loaiGaList">') +
+					'</div>' +
+					'<datalist id="loaiGaList">' + this.state.loaiGa.map((g) => '<option value="' + this.escapeAttr(g) + '"></option>').join('') + '</datalist>',
+				onSubmit: async () => {
+					const payload = {
+						SYSTEM: this.value('sc_system'),
+						Tenant: this.value('sc_tenant'),
+						Tenant_id: this.value('sc_tenant_id'),
+						FLOCK_ID: this.value('sc_flock'),
+						'Standards applied': this.value('sc_std')
+					};
+					await this.submitWithDuplicateConfirm('upsertConfig', payload, this.t('modalDuplicateConfigMsg'));
+				}
+			});
+		},
+
+		openSetupProductModal: function () {
+			ErpModal.open({
+				title: this.t('setupProductBtn'),
+				bodyHtml:
+					'<div class="form-grid">' +
+					this.formField(this.t('fProductName'), '<input class="form-control" id="sp_name">') +
+					this.formField(this.t('fProductType'), '<input class="form-control" id="sp_type" value="Chicken_feed">') +
+					this.formField(this.t('fUom'), '<input class="form-control" id="sp_uom" value="Bag">') +
+					this.formField(this.t('fUomWeight'), '<input class="form-control" id="sp_weight" type="number" value="40">') +
+					this.formField(this.t('fStatus'), '<select class="form-control" id="sp_status"><option>ACTIVE</option><option>INACTIVE</option></select>') +
+					'</div>',
+				onSubmit: async () => {
+					const payload = {
+						'Tên hàng hóa': this.value('sp_name'),
+						'Loại sản phẩm': this.value('sp_type'),
+						UOM: this.value('sp_uom'),
+						UOM_weight_kg: Number(this.value('sp_weight')),
+						Status: this.value('sp_status')
+					};
+					await this.submitWithDuplicateConfirm('upsertProductMaster', payload, this.t('modalDuplicateProductMsg'));
+				}
+			});
+		},
+
+		openSetupFeedModal: function () {
+			const loaiGaOptions = this.state.loaiGa.map((g) => '<option value="' + this.escapeAttr(g) + '"></option>').join('');
+			const productNames = this.state.products.map((p) => '<option value="' + this.escapeAttr(p['Tên hàng hóa'] || '') + '"></option>').join('');
+			ErpModal.open({
+				title: this.t('setupFeedBtn'),
+				bodyHtml:
+					'<div class="form-grid">' +
+					this.formField(this.t('fChickenType'), '<input class="form-control" id="sf_loaiga" list="sfLoaigaList">') +
+					this.formField(this.t('fAgeDay'), '<input class="form-control" id="sf_ngaytuoi" type="number">') +
+					this.formField(this.t('fFeedUse'), '<input class="form-control" id="sf_ta" type="number" step="0.01">') +
+					this.formField(this.t('fFeedType'), '<input class="form-control" id="sf_cam" list="sfCamList">') +
+					'</div>' +
+					'<datalist id="sfLoaigaList">' + loaiGaOptions + '</datalist>' +
+					'<datalist id="sfCamList">' + productNames + '</datalist>',
+				onSubmit: async () => {
+					const payload = {
+						'Loại Gà': this.value('sf_loaiga'),
+						'Ngày Tuổi': Number(this.value('sf_ngaytuoi')),
+						'TĂ sử dụng (g/c/n)': Number(this.value('sf_ta')),
+						'Loại cám': this.value('sf_cam')
+					};
+					await this.submitWithDuplicateConfirm('upsertFeedStandard', payload, this.t('modalDuplicateStandardMsg'));
+				}
+			});
+		},
+
+		openSetupPolicyModal: function () {
+			const skuOptions = this.state.products.map((p) => '<option value="' + this.escapeAttr(p['Tên hàng hóa'] || '') + '"></option>').join('');
+			ErpModal.open({
+				title: this.t('setupPolicyBtn'),
+				bodyHtml:
+					'<div class="form-grid">' +
+					this.formField(this.t('fSku'), '<input class="form-control" id="pl_sku" list="plSkuList">') +
+					this.formField(this.t('fZeroThreshold'), '<input class="form-control" id="pl_zero" type="number" step="0.01">') +
+					this.formField(this.t('fCriticalThreshold'), '<input class="form-control" id="pl_critical" type="number" step="0.01">') +
+					this.formField(this.t('fLowThreshold'), '<input class="form-control" id="pl_low" type="number" step="0.01">') +
+					this.formField(this.t('fHighThreshold'), '<input class="form-control" id="pl_high" type="number" step="0.01">') +
+					'</div>' +
+					'<datalist id="plSkuList">' + skuOptions + '</datalist>',
+				onSubmit: async () => {
+					const payload = {
+						'Mã hàng': this.value('pl_sku'),
+						zero_threshold: Number(this.value('pl_zero')),
+						critical_threshold: Number(this.value('pl_critical')),
+						low_threshold: Number(this.value('pl_low')),
+						high_threshold: Number(this.value('pl_high'))
+					};
+					await this.submitWithDuplicateConfirm('upsertPolicyThreshold', payload, this.t('modalDuplicateSkuMsg'));
+				}
+			});
+		},
+
+		submitWithDuplicateConfirm: async function (method, payload, confirmMessage) {
+			try {
+				ErpModal.setSubmitting(true);
+				await this.rpc(method, payload);
+				ErpModal.close();
+				this.toast(this.t('toastSaveOk'), 'success');
+				this.loadSetup(true);
+				await this.loadBootstrap();
+			} catch (err) {
+				if (err.code === 'DUPLICATE_KEY') {
+					const ok = await ErpDialog.confirm({
+						title: this.t('modalDuplicateTitle'),
+						message: confirmMessage,
+						type: 'warning',
+						okLabel: this.t('modalUpdate')
+					});
+					if (ok) {
+						payload.__confirmUpdate = true;
+						await this.submitWithDuplicateConfirm(method, payload, confirmMessage);
+					}
+					return;
+				}
+				this.toast(err.message || this.t('toastSaveFailed'), 'error');
+			} finally {
+				ErpModal.setSubmitting(false);
+			}
+		},
+
+		savePolicyInline: async function (encoded) {
+			try {
+				const parsed = JSON.parse(encoded);
+				const parseThreshold = (v) => {
+					const cleaned = String(v === undefined ? '' : v).replace(/%/g, '').trim();
+					return Number(cleaned);
+				};
+				const status = document.getElementById(parsed.key + '_status').value;
+				const note = document.getElementById(parsed.key + '_note').value;
+				await this.rpc('upsertPolicyThreshold', {
+					'Mã hàng': parsed.sku,
+					zero_threshold: parseThreshold(parsed.zero),
+					critical_threshold: parseThreshold(parsed.critical),
+					low_threshold: parseThreshold(parsed.low),
+					high_threshold: parseThreshold(parsed.high),
+					status: status,
+					note: note,
+					__confirmUpdate: true
+				});
+				this.toast(this.t('toastPolicyQuickOk'), 'success');
+			} catch (e) {
+				this.toast(e.message || this.t('toastPolicyQuickFailed'), 'error');
+			}
+		},
+
+		drawPie: function (elId, emptyId, dataTable, colors) {
+			const doDraw = () => {
+				const hasData = dataTable && dataTable.length > 1;
+				document.getElementById(emptyId).style.display = hasData ? 'none' : 'flex';
+				if (!hasData) return;
+				const data = google.visualization.arrayToDataTable(dataTable);
+				const chart = new google.visualization.PieChart(document.getElementById(elId));
+				chart.draw(data, {
+					legend: { position: 'right' },
+					backgroundColor: 'transparent',
+					colors: colors && colors.length ? colors : ['#f59e0b', '#0f766e', '#1d4ed8', '#10b981', '#dc2626'],
+					chartArea: { width: '88%', height: '80%' }
+				});
+			};
+			if (window.__gchartsReady) return doDraw();
+			window.__chartQueue = window.__chartQueue || [];
+			window.__chartQueue.push(doDraw);
+		},
+
+		drawLine: function (elId, emptyId, dataTable) {
+			const doDraw = () => {
+				const hasData = dataTable && dataTable.length > 1;
+				document.getElementById(emptyId).style.display = hasData ? 'none' : 'flex';
+				if (!hasData) return;
+				const data = google.visualization.arrayToDataTable(dataTable);
+				const chart = new google.visualization.LineChart(document.getElementById(elId));
+				chart.draw(data, {
+					legend: { position: 'bottom' },
+					backgroundColor: 'transparent',
+					colors: ['#245d4b', '#c86f31'],
+					chartArea: { width: '88%', height: '75%' },
+					curveType: 'function'
+				});
+			};
+			if (window.__gchartsReady) return doDraw();
+			window.__chartQueue = window.__chartQueue || [];
+			window.__chartQueue.push(doDraw);
+		},
+
+		rpc: function (method) {
+			const args = Array.prototype.slice.call(arguments, 1);
+			return new Promise((resolve, reject) => {
+				const runner = google.script.run
+					.withSuccessHandler((resp) => {
+						if (resp && resp.success) {
+							resolve(resp);
+						} else if (resp && typeof resp === 'object' && resp.success === false) {
+							reject({
+								message: (resp.error || resp.message || this.formatT('toastServerErrorFromMethod', { method: method })),
+								code: resp.errorCode,
+								method: method,
+								raw: resp
+							});
+						} else {
+							let rawText = '';
+							try {
+								rawText = JSON.stringify(resp);
+							} catch (e) {
+								rawText = String(resp);
+							}
+							reject({
+								message: this.formatT('toastInvalidResponseFromMethod', { method: method }) + (rawText ? (' | raw=' + rawText) : ''),
+								code: resp && resp.errorCode,
+								method: method,
+								raw: resp
+							});
+						}
+					})
+					.withFailureHandler((err) => {
+						reject({
+							message: (err && err.message ? err.message : String(err)) + ' | method=' + method,
+							method: method,
+							raw: err
+						});
+					});
+				const fn = runner[method];
+				if (typeof fn !== 'function') {
+					reject({ message: this.formatT('toastMethodNotFound', { method: method }) });
+					return;
+				}
+				fn.apply(runner, args);
+			});
+		},
+
+		callRaw: function (method) {
+			const args = Array.prototype.slice.call(arguments, 1);
+			return new Promise((resolve, reject) => {
+				const runner = google.script.run
+					.withSuccessHandler((resp) => resolve(resp))
+					.withFailureHandler((err) => reject(err));
+				const fn = runner[method];
+				if (typeof fn !== 'function') {
+					reject(new Error(this.formatT('toastMethodNotFound', { method: method })));
+					return;
+				}
+				fn.apply(runner, args);
+			});
+		},
+
+		toast: function (message, type) {
+			const box = document.createElement('div');
+			box.className = 'toast ' + (type ? ('toast-' + type) : '');
+			box.textContent = message;
+			document.getElementById('toastContainer').appendChild(box);
+			setTimeout(() => {
+				box.style.opacity = '0';
+				box.style.transform = 'translateY(6px)';
+				setTimeout(() => box.remove(), 180);
+			}, 2800);
+		},
+
+		formField: function (label, controlHtml, full) {
+			return '<div class="form-group ' + (full ? 'full' : '') + '"><label class="form-label">' + this.escape(label) + '</label>' + controlHtml + '</div>';
+		},
+
+		summaryMetric: function (label, value) {
+			return '<div style="padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);">' +
+				'<div style="font-size:11px;color:#6f877c;">' + this.escape(label) + '</div>' +
+				'<div style="font-size:16px;font-weight:700;">' + this.escape(String(value)) + '</div></div>';
+		},
+
+		value: function (id) {
+			const el = document.getElementById(id);
+			return el ? String(el.value || '').trim() : '';
+		},
+
+		formatIsoDateForDisplay: function (isoValue) {
+			if (!isoValue) return '';
+			const parts = String(isoValue).split('-');
+			if (parts.length !== 3) return '';
+			return parts[2] + '/' + parts[1] + '/' + parts[0];
+		},
+
+		bindDateDisplayProxy: function (nativeId, displayId) {
+			const nativeInput = document.getElementById(nativeId);
+			const displayInput = document.getElementById(displayId);
+			if (!nativeInput || !displayInput) return;
+
+			const syncDisplay = () => {
+				displayInput.value = this.formatIsoDateForDisplay(nativeInput.value);
+			};
+
+			const openPicker = () => {
+				if (typeof nativeInput.showPicker === 'function') {
+					nativeInput.showPicker();
+				} else {
+					nativeInput.focus();
+				}
+			};
+
+			displayInput.addEventListener('click', openPicker);
+			displayInput.addEventListener('focus', openPicker);
+			displayInput.addEventListener('keydown', (evt) => {
+				if (evt.key !== 'Enter' && evt.key !== ' ') return;
+				evt.preventDefault();
+				openPicker();
+			});
+
+			nativeInput.addEventListener('change', syncDisplay);
+			nativeInput.addEventListener('input', syncDisplay);
+			syncDisplay();
+		},
+
+		toIsoDateInput: function (value) {
+			if (!value) return '';
+			const d = new Date(value);
+			if (isNaN(d.getTime())) return '';
+			const yyyy = d.getFullYear();
+			const mm = String(d.getMonth() + 1).padStart(2, '0');
+			const dd = String(d.getDate()).padStart(2, '0');
+			return yyyy + '-' + mm + '-' + dd;
+		},
+
+		isFutureDate: function (value) {
+			if (!value) return false;
+			const d = new Date(value);
+			if (isNaN(d.getTime())) return false;
+			d.setHours(0, 0, 0, 0);
+			const today = new Date();
+			today.setHours(0, 0, 0, 0);
+			return d.getTime() > today.getTime();
+		},
+
+		getRowValue: function (row, candidateKeys) {
+			if (!row || !candidateKeys || candidateKeys.length === 0) return '';
+			for (let i = 0; i < candidateKeys.length; i++) {
+				const key = candidateKeys[i];
+				if (Object.prototype.hasOwnProperty.call(row, key)) {
+					const v = row[key];
+					if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+				}
+			}
+
+			const normalize = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+			const normalizedCandidates = candidateKeys.map(normalize);
+			const keys = Object.keys(row);
+			for (let k = 0; k < keys.length; k++) {
+				const rawKey = keys[k];
+				if (normalizedCandidates.indexOf(normalize(rawKey)) === -1) continue;
+				const value = row[rawKey];
+				if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+			}
+
+			return '';
+		},
+
+		badgeClass: function (badge) {
+			const map = {
+				Zero: 'badge-zero',
+				Critical: 'badge-critical',
+				Low: 'badge-low',
+				Safe: 'badge-safe',
+				High: 'badge-high'
+			};
+			return map[badge] || 'badge-empty';
+		},
+
+		orderStatusClass: function (status) {
+			if (status === 'Lên kế hoạch') return 'badge-order-pending';
+			if (status === 'Đã lấy hàng') return 'badge-order-deducted';
+			if (status === 'Chờ giao hàng') return 'badge-order-deducted';
+			if (status === 'Hoan tat') return 'badge-order-completed';
+			if (status === 'Hoàn tất') return 'badge-order-completed';
+			return 'badge-order-error';
+		},
+
+		orderStatusColor: function (status) {
+			if (status === 'Lên kế hoạch' || status === 'Planning') return '#d55053';
+			if (status === 'Đã lấy hàng' || status === 'Picked up') return '#5bb1de';
+			if (status === 'Chờ giao hàng' || status === 'In transit') return '#245d4b';
+			if (status === 'Hoan tat') return '#8abda2';
+			if (status === 'Hoàn tất' || status === 'Completed') return '#8abda2';
+			return '#64748b';
+		},
+
+		displayOrderStatus: function (status) {
+			if (status === 'Lên kế hoạch') return this.t('statusPlanned');
+			if (status === 'Đã lấy hàng') return this.t('statusPickedUp');
+			if (status === 'Chờ giao hàng') return this.t('statusInTransit');
+			if (status === 'Hoan tat') return this.t('statusCompleted');
+			if (status === 'Hoàn tất') return this.t('statusCompleted');
+			if (status === 'Planning') return this.t('statusPlanned');
+			if (status === 'Picked up') return this.t('statusPickedUp');
+			if (status === 'In transit') return this.t('statusInTransit');
+			if (status === 'Completed') return this.t('statusCompleted');
+			return status || '-';
+		},
+
+		displayThreshold: function (badge) {
+			if (badge === 'Zero') return this.t('badgeZero');
+			if (badge === 'Critical') return this.t('badgeCritical');
+			if (badge === 'Low') return this.t('badgeLow');
+			if (badge === 'Safe') return this.t('badgeSafe');
+			if (badge === 'High') return this.t('badgeHigh');
+			return badge || '-';
+		},
+
+		translateLocation: function (value) {
+			if (value === 'Nhà máy' || value === 'Factory') return this.t('wmsScopeFactory');
+			if (value === 'Trại' || value === 'Farm') return this.t('wmsScopeFarm');
+			return value;
+		},
+
+		formatDate: function (value) {
+			if (!value) return '-';
+			const d = new Date(value);
+
+			if (isNaN(d.getTime())) return this.escape(String(value));
+			const dd = String(d.getDate()).padStart(2, '0');
+			const mm = String(d.getMonth() + 1).padStart(2, '0');
+			const yyyy = d.getFullYear();
+			return dd + '/' + mm + '/' + yyyy;
+		},
+
+		escape: function (str) {
+			return String(str)
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#39;');
+		},
+
+		escapeAttr: function (str) {
+			return this.escape(str).replace(/`/g, '&#96;');
+		}
+	};
+
+	window.App = App;
+
+	document.addEventListener('DOMContentLoaded', function () {
+		App.init();
+	});
+</script>
