@@ -288,23 +288,68 @@
 						<h2 id="setupTitle">Setup - Master Data</h2>
 						<p id="setupDesc">Quản trị danh mục Config, Product, Feed Standard và Policy Threshold.</p>
 					</div>
-					<div class="inline-fields">
-						<button class="btn btn-outline" id="btnSetupConfig"><span
-								class="material-symbols-outlined">domain_add</span><span id="btnSetupConfigLabel">Upsert
-								Config</span></button>
-						<button class="btn btn-outline" id="btnSetupProduct"><span
-								class="material-symbols-outlined">barcode</span><span id="btnSetupProductLabel">Upsert
-								Product</span></button>
-						<button class="btn btn-outline" id="btnSetupFeed"><span
-								class="material-symbols-outlined">nutrition</span><span id="btnSetupFeedLabel">Upsert
-								Feed Std</span></button>
-						<button class="btn btn-primary" id="btnSetupPolicy"><span
-								class="material-symbols-outlined">policy</span><span id="btnSetupPolicyLabel">Upsert
-								Policy</span></button>
-					</div>
 				</div>
-				<div class="grid-2">
-					<div class="card" style="padding:0;">
+
+				<nav class="nav-tabs" id="setupTabs" style="margin-bottom:10px;">
+					<button class="nav-tab setup-tab is-active" data-setup-tab="account"><span
+							class="material-symbols-outlined">manage_accounts</span><span
+							id="setupTabAccountLabel">ACCOUNT</span></button>
+					<button class="nav-tab setup-tab" data-setup-tab="standard"><span
+							class="material-symbols-outlined">policy</span><span
+							id="setupTabStandardLabel">STANDARD</span></button>
+					<button class="nav-tab setup-tab" data-setup-tab="feed"><span
+							class="material-symbols-outlined">nutrition</span><span
+							id="setupTabFeedLabel">FEED</span></button>
+				</nav>
+
+				<div class="setup-panel is-active" id="setup-panel-account">
+					<div class="card" style="padding:10px;">
+						<div class="inline-fields" style="justify-content:flex-end;margin-bottom:8px;">
+							<button class="btn btn-primary" id="btnSetupAccount"><span
+									class="material-symbols-outlined">add_circle</span><span
+									id="btnSetupAccountLabel">Tạo cấu hình</span></button>
+						</div>
+						<div class="inline-fields" style="justify-content:flex-start;gap:10px;flex-wrap:wrap;">
+							<div class="inline-fields" style="gap:10px;flex-wrap:wrap;align-items:flex-end;">
+								<div>
+									<label class="form-label" id="setupAccountBlockFilterLabel">Khối dịch vụ</label>
+									<select class="form-control" id="setupAccountBlockFilter"
+										style="min-width:180px;"></select>
+								</div>
+								<div>
+									<label class="form-label" id="setupAccountSystemFilterLabel">Hệ thống</label>
+									<select class="form-control" id="setupAccountSystemFilter"
+										style="min-width:170px;"></select>
+								</div>
+								<div id="setupAccountTenantWrap">
+									<label class="form-label" id="setupAccountTenantFilterLabel">Đơn vị</label>
+									<select class="form-control" id="setupAccountTenantFilter"
+										style="min-width:220px;"></select>
+								</div>
+								<div id="setupAccountTenantIdWrap">
+									<label class="form-label" id="setupAccountTenantIdFilterLabel">Tenant_id</label>
+									<select class="form-control" id="setupAccountTenantIdFilter"
+										style="min-width:220px;"></select>
+								</div>
+								<div>
+									<label class="form-label" id="setupAccountAddressFilterLabel">Địa chỉ</label>
+									<select class="form-control" id="setupAccountAddressFilter"
+										style="min-width:180px;"></select>
+								</div>
+								<div id="setupAccountFlockIdWrap" style="display:none;">
+									<label class="form-label" id="setupAccountFlockIdFilterLabel">Mã đàn gà</label>
+									<select class="form-control" id="setupAccountFlockIdFilter"
+										style="min-width:180px;"></select>
+								</div>
+								<div id="setupAccountFlockNameWrap" style="display:none;">
+									<label class="form-label" id="setupAccountFlockNameFilterLabel">Tên flock</label>
+									<select class="form-control" id="setupAccountFlockNameFilter"
+										style="min-width:200px;"></select>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="card" style="padding:0;margin-top:10px;">
 						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
 							<h3 style="margin:0;" id="setupConfigTitle">Config Tenants</h3>
 						</div>
@@ -315,54 +360,87 @@
 							</table>
 						</div>
 					</div>
-					<div class="card" style="padding:0;">
-						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
-							<h3 style="margin:0;" id="setupProductTitle">Product Master</h3>
+				</div>
+
+				<div class="setup-panel" id="setup-panel-feed" style="display:none;">
+					<div class="card" style="padding:10px;">
+						<div class="inline-fields" style="justify-content:flex-end;">
+							<button class="btn btn-outline" id="btnSetupProduct"><span
+									class="material-symbols-outlined">barcode</span><span
+									id="btnSetupProductLabel">Upsert
+									Product</span></button>
+							<button class="btn btn-primary" id="btnSetupPolicy"><span
+									class="material-symbols-outlined">policy</span><span id="btnSetupPolicyLabel">Upsert
+									Policy</span></button>
 						</div>
-						<div class="table-wrap">
-							<table class="erp-table">
-								<thead id="setupProductHead"></thead>
-								<tbody id="setupProductBody"></tbody>
-							</table>
+					</div>
+					<div style="display:grid;grid-template-columns:1fr;gap:12px;margin-top:10px;">
+						<div class="card" style="padding:0;">
+							<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+								<h3 style="margin:0;" id="setupProductTitle">Product Master</h3>
+							</div>
+							<div class="table-wrap">
+								<table class="erp-table">
+									<thead id="setupProductHead"></thead>
+									<tbody id="setupProductBody"></tbody>
+								</table>
+							</div>
+						</div>
+						<div class="card" style="padding:0;">
+							<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+								<h3 style="margin:0;" id="setupPolicyTitle">Policy Thresholds</h3>
+							</div>
+							<div class="card"
+								style="padding:10px;border:0;border-bottom:1px solid var(--line);border-radius:0;">
+								<div class="search-box">
+									<span class="material-symbols-outlined">search</span>
+									<input class="form-control" id="setupPolicySearch"
+										placeholder="Tìm Policy theo SKU / status / note">
+								</div>
+							</div>
+							<div class="table-wrap">
+								<table class="erp-table">
+									<thead id="setupPolicyHead"></thead>
+									<tbody id="setupPolicyBody"></tbody>
+								</table>
+							</div>
 						</div>
 					</div>
 				</div>
-				<div class="card" style="padding:10px;margin-top:10px;">
-					<div class="filter-bar">
-						<div class="search-box">
-							<span class="material-symbols-outlined">search</span>
-							<input class="form-control" id="setupFeedSearch"
-								placeholder="Tìm Feed Standard theo Loại Gà / Loại cám">
-						</div>
-						<div class="search-box">
-							<span class="material-symbols-outlined">search</span>
-							<input class="form-control" id="setupPolicySearch"
-								placeholder="Tìm Policy theo SKU / status / note">
+
+				<div class="setup-panel" id="setup-panel-standard" style="display:none;">
+					<div class="card" style="padding:10px;">
+						<div class="inline-fields" style="justify-content:flex-start;">
+							<div class="inline-fields" style="gap:10px;flex-wrap:wrap;align-items:flex-end;">
+								<div>
+									<label class="form-label" id="setupFeedChickenFilterLabel">Loại gà</label>
+									<select class="form-control" id="setupFeedChickenFilter"
+										style="min-width:220px;"></select>
+								</div>
+								<div>
+									<label class="form-label" id="setupFeedTypeFilterLabel">Loại cám</label>
+									<select class="form-control" id="setupFeedTypeFilter"
+										style="min-width:220px;"></select>
+								</div>
+								<div>
+									<label class="form-label" id="setupFeedAgeFilterLabel">Ngày tuổi</label>
+									<input class="form-control" id="setupFeedAgeFilter" type="number" min="0"
+										style="min-width:220px;" placeholder="Nhập ngày tuổi">
+								</div>
+							</div>
 						</div>
 					</div>
-				</div>
-				<div class="grid-2" style="margin-top:10px;">
-					<div class="card" style="padding:0;">
+					<div class="card" style="padding:0;margin-top:10px;">
 						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
 							<h3 style="margin:0;" id="setupFeedTitle">Feed Standard</h3>
 						</div>
 						<div class="table-wrap">
-							<table class="erp-table">
+							<table class="erp-table standard-table">
 								<thead id="setupFeedHead"></thead>
 								<tbody id="setupFeedBody"></tbody>
 							</table>
 						</div>
-					</div>
-					<div class="card" style="padding:0;">
-						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
-							<h3 style="margin:0;" id="setupPolicyTitle">Policy Thresholds</h3>
-						</div>
-						<div class="table-wrap">
-							<table class="erp-table">
-								<thead id="setupPolicyHead"></thead>
-								<tbody id="setupPolicyBody"></tbody>
-							</table>
-						</div>
+						<div class="pagination-bar" id="setupFeedPagination"></div>
 					</div>
 				</div>
 			</section>

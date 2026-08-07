@@ -13,6 +13,7 @@
 			user: null,
 			lang: 'vi',
 			activeView: 'dashboard',
+			setupTab: 'account',
 			loadedViews: {},
 			configs: [],
 			products: [],
@@ -24,6 +25,8 @@
 			dashboardAlertWindowDays: 7,
 			dashboardAlertItems: [],
 			dashboardAlertFarm: '',
+			setupFeedPage: 1,
+			setupFeedPageSize: 20,
 			omsRows: [],
 			omsSelectedIds: {}
 		},
@@ -96,17 +99,46 @@
 			document.getElementById('btnWmsOutbound').addEventListener('click', () => this.openTxnModal('Outbound'));
 			document.getElementById('btnWmsAdjust').addEventListener('click', () => this.openAdjustModal());
 
-			document.getElementById('btnSetupConfig').addEventListener('click', () => this.openSetupConfigModal());
 			document.getElementById('btnSetupProduct').addEventListener('click', () => this.openSetupProductModal());
-			document.getElementById('btnSetupFeed').addEventListener('click', () => this.openSetupFeedModal());
 			document.getElementById('btnSetupPolicy').addEventListener('click', () => this.openSetupPolicyModal());
+			document.getElementById('btnSetupAccount').addEventListener('click', () => this.openSetupAccountModal());
+			document.getElementById('setupAccountBlockFilter').addEventListener('change', () => this.loadSetup(true));
+			document.getElementById('setupAccountSystemFilter').addEventListener('change', () => this.loadSetup(true));
+			document.getElementById('setupAccountTenantFilter').addEventListener('change', () => this.loadSetup(true));
+			document.getElementById('setupAccountTenantIdFilter').addEventListener('change', () => this.loadSetup(true));
+			document.getElementById('setupAccountAddressFilter').addEventListener('change', () => this.loadSetup(true));
+			document.getElementById('setupAccountFlockIdFilter').addEventListener('change', () => this.loadSetup(true));
+			document.getElementById('setupAccountFlockNameFilter').addEventListener('change', () => this.loadSetup(true));
 
-			document.getElementById('setupFeedSearch').addEventListener('input', () => this.loadSetup(true));
+			document.getElementById('setupTabs').addEventListener('click', (evt) => {
+				const btn = evt.target.closest('[data-setup-tab]');
+				if (!btn) return;
+				this.switchSetupTab(btn.dataset.setupTab);
+			});
+
+			document.getElementById('setupFeedAgeFilter').addEventListener('input', () => {
+				this.state.setupFeedPage = 1;
+				this.loadSetup(true);
+			});
+			document.getElementById('setupFeedChickenFilter').addEventListener('change', () => {
+				this.state.setupFeedPage = 1;
+				this.loadSetup(true);
+			});
+			document.getElementById('setupFeedTypeFilter').addEventListener('change', () => {
+				this.state.setupFeedPage = 1;
+				this.loadSetup(true);
+			});
+			document.getElementById('setupFeedPagination').addEventListener('click', (evt) => this.handleSetupFeedPaginationClick(evt));
 			document.getElementById('setupPolicySearch').addEventListener('input', () => this.loadSetup(true));
 			document.getElementById('setupPolicyBody').addEventListener('click', (evt) => {
 				const btn = evt.target.closest('[data-save-policy]');
 				if (!btn) return;
 				this.savePolicyInline(btn.dataset.savePolicy);
+			});
+			document.getElementById('setupConfigBody').addEventListener('click', (evt) => {
+				const btn = evt.target.closest('[data-edit-config]');
+				if (!btn) return;
+				this.openSetupAccountEditModal(btn.dataset.editConfig);
 			});
 
 			document.getElementById('dashboardAlertFarmFilter').addEventListener('change', (evt) => {
@@ -213,6 +245,9 @@
 				navWmsLabel: 'navWms',
 				navFmsLabel: 'navFms',
 				navSetupLabel: 'navSetup',
+				setupTabAccountLabel: 'setupTabAccount',
+				setupTabStandardLabel: 'setupTabStandard',
+				setupTabFeedLabel: 'setupTabFeed',
 				dashboardTitle: 'dashboardTitle',
 				dashboardDesc: 'dashboardDesc',
 				dashboardOrderPieTitle: 'dashboardOrderPieTitle',
@@ -250,13 +285,24 @@
 				fmsLogTitle: 'fmsLogTitle',
 				setupTitle: 'setupTitle',
 				setupDesc: 'setupDesc',
-				btnSetupConfigLabel: 'setupConfigBtn',
+				btnSetupAccountLabel: 'setupAccountBtn',
 				btnSetupProductLabel: 'setupProductBtn',
-				btnSetupFeedLabel: 'setupFeedBtn',
 				btnSetupPolicyLabel: 'setupPolicyBtn',
 				setupConfigTitle: 'setupConfigTitle',
+				setupAccountBlockFilterLabel: 'setupFilterBlockLabel',
+				setupAccountSystemFilterLabel: 'setupFilterSystemLabel',
+				setupAccountTenantFilterLabel: 'setupFilterTenantLabel',
+				setupAccountTenantIdFilterLabel: 'setupFilterTenantIdLabel',
+				setupAccountAddressFilterLabel: 'setupFilterAddressLabel',
+				setupAccountFlockIdFilterLabel: 'setupFilterFlockIdLabel',
+				setupAccountFlockNameFilterLabel: 'setupFilterFlockNameLabel',
+				setupAccountStartCountFilterLabel: 'setupFilterStartCountLabel',
+				setupAccountStartDateFilterLabel: 'setupFilterStartDateLabel',
 				setupProductTitle: 'setupProductTitle',
 				setupFeedTitle: 'setupFeedTitle',
+				setupFeedAgeFilterLabel: 'fAgeDay',
+				setupFeedChickenFilterLabel: 'fChickenType',
+				setupFeedTypeFilterLabel: 'fFeedType',
 				setupPolicyTitle: 'setupPolicyTitle',
 				btnOmsMergeSuggestLabel: 'btnOmsMergeSuggestLabel',
 				btnOmsAssignTmsAllLabel: 'btnOmsAssignTmsAllLabel',
@@ -269,10 +315,48 @@
 			});
 			const omsSearch = document.getElementById('omsSearch');
 			if (omsSearch) omsSearch.placeholder = this.t('searchOms');
-			const setupFeedSearch = document.getElementById('setupFeedSearch');
-			if (setupFeedSearch) setupFeedSearch.placeholder = this.t('setupFeedSearch');
+			const setupFeedAgeFilter = document.getElementById('setupFeedAgeFilter');
+			if (setupFeedAgeFilter) setupFeedAgeFilter.placeholder = this.t('fAgeDay');
 			const setupPolicySearch = document.getElementById('setupPolicySearch');
 			if (setupPolicySearch) setupPolicySearch.placeholder = this.t('setupPolicySearch');
+		},
+
+		handleSetupFeedPaginationClick: function (evt) {
+			const btn = evt.target.closest('button[data-page]');
+			if (!btn) return;
+			const page = Number(btn.dataset.page || 1);
+			if (!isFinite(page) || page < 1) return;
+			this.state.setupFeedPage = page;
+			this.loadSetup(true);
+		},
+
+		renderSimplePagination: function (total, pageSize, page) {
+			const safeTotal = Math.max(0, Number(total) || 0);
+			const safePageSize = Math.max(1, Number(pageSize) || 20);
+			const totalPages = Math.max(1, Math.ceil(safeTotal / safePageSize));
+			const safePage = Math.max(1, Math.min(totalPages, Number(page) || 1));
+
+			if (safeTotal === 0) return '';
+
+			let startPage = Math.max(1, safePage - 2);
+			let endPage = Math.min(totalPages, startPage + 4);
+			startPage = Math.max(1, endPage - 4);
+
+			const pageButtons = [];
+			for (let p = startPage; p <= endPage; p++) {
+				pageButtons.push('<button class="page-btn ' + (p === safePage ? 'is-active' : '') + '" data-page="' + p + '">' + p + '</button>');
+			}
+
+			const from = (safePage - 1) * safePageSize + 1;
+			const to = Math.min(safePage * safePageSize, safeTotal);
+			const info = this.formatT('paginationInfo', { from: from, to: to, total: safeTotal });
+
+			return '<div>' + this.escape(info) + '</div>' +
+				'<div class="pagination-controls">' +
+				'<button class="page-btn" data-page="' + (safePage - 1) + '" ' + (safePage <= 1 ? 'disabled' : '') + '>' + this.escape(this.t('pagePrev')) + '</button>' +
+				pageButtons.join('') +
+				'<button class="page-btn" data-page="' + (safePage + 1) + '" ' + (safePage >= totalPages ? 'disabled' : '') + '>' + this.escape(this.t('pageNext')) + '</button>' +
+				'</div>';
 		},
 
 		renderUserChip: function () {
@@ -331,6 +415,25 @@
 			this.state.activeView = viewName;
 			document.querySelectorAll('.nav-tab').forEach((el) => el.classList.toggle('is-active', el.dataset.view === viewName));
 			document.querySelectorAll('.view').forEach((el) => el.classList.toggle('is-active', el.id === 'view-' + viewName));
+			if (viewName === 'setup') {
+				this.switchSetupTab(this.state.setupTab || 'account');
+			}
+		},
+
+		switchSetupTab: function (tabName) {
+			const allowed = { account: true, standard: true, feed: true };
+			const nextTab = allowed[tabName] ? tabName : 'account';
+			this.state.setupTab = nextTab;
+
+			document.querySelectorAll('#setupTabs .setup-tab').forEach((el) => {
+				el.classList.toggle('is-active', el.dataset.setupTab === nextTab);
+			});
+
+			document.querySelectorAll('#view-setup .setup-panel').forEach((panel) => {
+				const isActive = panel.id === ('setup-panel-' + nextTab);
+				panel.classList.toggle('is-active', isActive);
+				panel.style.display = isActive ? '' : 'none';
+			});
 		},
 
 		fillTenantOptions: function () {
@@ -1174,51 +1277,444 @@
 
 		loadSetup: async function () {
 			try {
-				const [configResp, productResp, feedResp, policyResp] = await Promise.all([
+				const [configResp, productResp, feedResp, policyResp, flockResp] = await Promise.all([
 					this.rpc('getConfigList'),
 					this.rpc('getProductMasterList'),
 					this.rpc('getFeedStandardList'),
-					this.rpc('getPolicyThresholds')
+					this.rpc('getPolicyThresholds'),
+					this.rpc('getFlockList')
 				]);
 				const configs = configResp.data || [];
 				const products = productResp.data || [];
 				const feedRows = feedResp.data || [];
 				const policyRows = policyResp.data || [];
+				const flockRows = flockResp.data || [];
 
-				const feedSearch = (document.getElementById('setupFeedSearch').value || '').trim().toLowerCase();
+				const feedChickenFilterEl = document.getElementById('setupFeedChickenFilter');
+				const feedTypeFilterEl = document.getElementById('setupFeedTypeFilter');
+				const feedAgeFilterEl = document.getElementById('setupFeedAgeFilter');
+				const prevFeedChicken = feedChickenFilterEl ? String(feedChickenFilterEl.value || '') : '';
+				const prevFeedType = feedTypeFilterEl ? String(feedTypeFilterEl.value || '') : '';
+				const feedAgeFilterRaw = feedAgeFilterEl ? String(feedAgeFilterEl.value || '').trim() : '';
+				const feedAgeFilterNum = feedAgeFilterRaw === '' ? NaN : Number(feedAgeFilterRaw);
 				const policySearch = (document.getElementById('setupPolicySearch').value || '').trim().toLowerCase();
 
-				const filteredFeed = !feedSearch ? feedRows : feedRows.filter((r) => {
-					const target = [r['Loại Gà'], r['Loại cám'], r['Ngày Tuổi']].join(' ').toLowerCase();
-					return target.indexOf(feedSearch) !== -1;
-				});
+				let filteredFeed = feedRows;
 
 				const filteredPolicy = !policySearch ? policyRows : policyRows.filter((r) => {
 					const target = [r['Mã hàng'], r.status, r.note].join(' ').toLowerCase();
 					return target.indexOf(policySearch) !== -1;
 				});
 
-				document.getElementById('setupConfigHead').innerHTML = '<tr><th>Tenant_id</th><th>' + this.escape(this.t('hTenant')) + '</th><th>' + this.escape(this.t('hSystem')) + '</th><th>' + this.escape(this.t('hFlock')) + '</th></tr>';
-				document.getElementById('setupConfigBody').innerHTML = configs.length === 0
-					? '<tr><td colspan="4"><div class="state-box">' + this.escape(this.t('msgNoConfig')) + '</div></td></tr>'
-					: configs.slice(0, 120).map((r) => '<tr><td>' + this.escape(r.Tenant_id || '') + '</td><td>' + this.escape(r.Tenant || '') + '</td><td>' + this.escape(r.SYSTEM || '') + '</td><td>' + this.escape(r.FLOCK_ID || '-') + '</td></tr>').join('');
+				const blockFilterEl = document.getElementById('setupAccountBlockFilter');
+				const systemFilterEl = document.getElementById('setupAccountSystemFilter');
+				const tenantFilterEl = document.getElementById('setupAccountTenantFilter');
+				const tenantWrapEl = document.getElementById('setupAccountTenantWrap');
+				const tenantIdWrapEl = document.getElementById('setupAccountTenantIdWrap');
+				const tenantIdFilterEl = document.getElementById('setupAccountTenantIdFilter');
+				const addressFilterEl = document.getElementById('setupAccountAddressFilter');
+				const flockIdFilterEl = document.getElementById('setupAccountFlockIdFilter');
+				const flockNameFilterEl = document.getElementById('setupAccountFlockNameFilter');
+
+				const flockIdWrap = document.getElementById('setupAccountFlockIdWrap');
+				const flockNameWrap = document.getElementById('setupAccountFlockNameWrap');
+
+				const prevBlock = blockFilterEl ? String(blockFilterEl.value || '') : '';
+				const prevSystem = systemFilterEl ? String(systemFilterEl.value || '') : '';
+				const prevTenant = tenantFilterEl ? String(tenantFilterEl.value || '') : '';
+				const prevTenantId = tenantIdFilterEl ? String(tenantIdFilterEl.value || '') : '';
+				const prevAddress = addressFilterEl ? String(addressFilterEl.value || '') : '';
+				const prevFlockId = flockIdFilterEl ? String(flockIdFilterEl.value || '') : '';
+				const prevFlockName = flockNameFilterEl ? String(flockNameFilterEl.value || '') : '';
+
+				const uniqueSorted = (rows, selector) => Array.from(new Set((rows || []).map(selector).filter(Boolean))).sort();
+				const getFeedValue = (row, keys) => {
+					for (let i = 0; i < keys.length; i += 1) {
+						const val = row ? row[keys[i]] : undefined;
+						if (val !== undefined && val !== null && String(val).trim() !== '') {
+							return String(val).trim();
+						}
+					}
+					return '';
+				};
+				const normalizeTenantId = (value) => String(value || '').trim().toLowerCase().replace(/[_\-\s]+/g, '');
+				const normalizeText = (value) => String(value || '').trim().toLowerCase();
+				const extractFarmNo = (value, prefix) => {
+					const pattern = new RegExp('^' + prefix + '[_-]?(\\d+)', 'i');
+					const m = String(value || '').trim().match(pattern);
+					return m ? m[1] : '';
+				};
+				const getFlockId = (r) => String(r.FLOCK_ID || r['FLOCK ID'] || r['Flock ID'] || '').trim();
+				const getFlockName = (r) => String(r.FLOCK_NAME || r['FLOCK NAME'] || r['Flock Name'] || '').trim();
+				const getFlockCode = (r) => {
+					const tenantId = String(r.Tenant_id || '').trim();
+					if (/^flock[_-]?\d+/i.test(tenantId)) return tenantId;
+					return getFlockId(r);
+				};
+				const isFactoryTenant = (row) => {
+					const tenant = String(row.Tenant || '').trim();
+					const tenantId = String(row.Tenant_id || '').trim();
+					const managedBy = normalizeText(row['Managed by']);
+					if (/_(0+)$/.test(tenant)) return true;
+					if (/_(0+\d*)$/.test(tenantId)) return true;
+					if (managedBy.indexOf('factory') !== -1 || managedBy.indexOf('nha may') !== -1) return true;
+					return false;
+				};
+
+				const chickenTypes = uniqueSorted(feedRows, (r) => getFeedValue(r, ['Loại Gà', 'Chicken Type']));
+				if (feedChickenFilterEl) {
+					feedChickenFilterEl.innerHTML = ['<option value="">' + this.escape(this.t('allChickenTypes')) + '</option>']
+						.concat(chickenTypes.map((v) => '<option value="' + this.escapeAttr(v) + '">' + this.escape(v) + '</option>'))
+						.join('');
+					feedChickenFilterEl.value = chickenTypes.indexOf(prevFeedChicken) !== -1 ? prevFeedChicken : '';
+				}
+				const selectedFeedChicken = feedChickenFilterEl ? String(feedChickenFilterEl.value || '') : '';
+
+				const feedTypes = uniqueSorted(feedRows, (r) => getFeedValue(r, ['Loại cám', 'Feed Type', 'Loại Cám']));
+				if (feedTypeFilterEl) {
+					feedTypeFilterEl.innerHTML = ['<option value="">' + this.escape(this.t('allFeedTypes')) + '</option>']
+						.concat(feedTypes.map((v) => '<option value="' + this.escapeAttr(v) + '">' + this.escape(v) + '</option>'))
+						.join('');
+					feedTypeFilterEl.value = feedTypes.indexOf(prevFeedType) !== -1 ? prevFeedType : '';
+				}
+				const selectedFeedType = feedTypeFilterEl ? String(feedTypeFilterEl.value || '') : '';
+
+				filteredFeed = feedRows.filter((r) => {
+					const chicken = getFeedValue(r, ['Loại Gà', 'Chicken Type']);
+					const feedType = getFeedValue(r, ['Loại cám', 'Feed Type', 'Loại Cám']);
+					const age = getFeedValue(r, ['Ngày Tuổi', 'Age']);
+					if (selectedFeedChicken && chicken !== selectedFeedChicken) return false;
+					if (selectedFeedType && feedType !== selectedFeedType) return false;
+					if (feedAgeFilterRaw === '') return true;
+					const ageNum = Number(age);
+					if (!isFinite(ageNum) || !isFinite(feedAgeFilterNum)) return false;
+					return ageNum === feedAgeFilterNum;
+				});
+
+				const blockOptions = [
+					{ value: 'transport', label: this.t('setupBlockTransport') },
+					{ value: 'factory', label: this.t('setupBlockFactory') },
+					{ value: 'farm', label: this.t('setupBlockFarm') },
+					{ value: 'flock', label: this.t('setupBlockFlock') }
+				];
+				if (blockFilterEl) {
+					blockFilterEl.innerHTML = blockOptions.map((o) => '<option value="' + this.escapeAttr(o.value) + '">' + this.escape(o.label) + '</option>').join('');
+					blockFilterEl.value = blockOptions.some((o) => o.value === prevBlock) ? prevBlock : 'factory';
+				}
+				const selectedBlock = blockFilterEl ? String(blockFilterEl.value || 'factory') : 'factory';
+				if (tenantWrapEl) tenantWrapEl.style.display = selectedBlock === 'factory' ? 'none' : '';
+				if (tenantIdWrapEl) tenantIdWrapEl.style.display = selectedBlock === 'farm' ? 'none' : '';
+
+				const blockRows = configs.filter((r) => {
+					const system = String(r.SYSTEM || '').trim();
+					if (selectedBlock === 'transport') return system === 'TMS';
+					if (selectedBlock === 'factory') return (system === 'OMS' || system === 'WMS') && isFactoryTenant(r);
+					if (selectedBlock === 'farm') return system === 'WMS' && !isFactoryTenant(r);
+					if (selectedBlock === 'flock') return system === 'FMS';
+					return true;
+				});
+
+				const systems = uniqueSorted(blockRows, (r) => String(r.SYSTEM || '').trim());
+				if (systemFilterEl) {
+					systemFilterEl.innerHTML = systems.map((v) => '<option value="' + this.escapeAttr(v) + '">' + this.escape(v) + '</option>').join('');
+					if (systems.indexOf(prevSystem) !== -1) {
+						systemFilterEl.value = prevSystem;
+					} else {
+						systemFilterEl.value = systems[0] || '';
+					}
+				}
+
+				const selectedSystem = systemFilterEl ? String(systemFilterEl.value || '') : '';
+				const systemRows = blockRows.filter((r) => String(r.SYSTEM || '').trim() === selectedSystem);
+
+				const tenantNames = uniqueSorted(systemRows, (r) => String(r.Tenant || '').trim());
+				if (tenantFilterEl) {
+					tenantFilterEl.innerHTML = ['<option value="">' + this.escape(this.t('allTenantNames')) + '</option>']
+						.concat(tenantNames.map((v) => '<option value="' + this.escapeAttr(v) + '">' + this.escape(v) + '</option>'))
+						.join('');
+					tenantFilterEl.value = selectedBlock === 'factory'
+						? ''
+						: (tenantNames.indexOf(prevTenant) !== -1 ? prevTenant : '');
+				}
+				const selectedTenant = selectedBlock === 'factory'
+					? ''
+					: (tenantFilterEl ? String(tenantFilterEl.value || '') : '');
+
+				const tenantRows = selectedTenant
+					? systemRows.filter((r) => String(r.Tenant || '').trim() === selectedTenant)
+					: systemRows;
+
+				const tenantIds = uniqueSorted(tenantRows, (r) => String(r.Tenant_id || '').trim());
+				if (tenantIdFilterEl) {
+					tenantIdFilterEl.innerHTML = ['<option value="">' + this.escape(this.t('allTenantIds')) + '</option>']
+						.concat(tenantIds.map((v) => '<option value="' + this.escapeAttr(v) + '">' + this.escape(v) + '</option>'))
+						.join('');
+					tenantIdFilterEl.value = selectedBlock === 'farm'
+						? ''
+						: (tenantIds.indexOf(prevTenantId) !== -1 ? prevTenantId : '');
+				}
+				const selectedTenantId = selectedBlock === 'farm'
+					? ''
+					: (tenantIdFilterEl ? String(tenantIdFilterEl.value || '') : '');
+
+				const tenantIdRows = selectedTenantId
+					? tenantRows.filter((r) => String(r.Tenant_id || '').trim() === selectedTenantId)
+					: tenantRows;
+
+				const addresses = uniqueSorted(tenantIdRows, (r) => String(r['Address of Tenant'] || '').trim());
+				if (addressFilterEl) {
+					addressFilterEl.innerHTML = ['<option value="">' + this.escape(this.t('allAddresses')) + '</option>']
+						.concat(addresses.map((v) => '<option value="' + this.escapeAttr(v) + '">' + this.escape(v) + '</option>'))
+						.join('');
+					addressFilterEl.value = addresses.indexOf(prevAddress) !== -1 ? prevAddress : '';
+				}
+				const selectedAddress = addressFilterEl ? String(addressFilterEl.value || '') : '';
+
+				let filteredConfigs = tenantIdRows;
+				if (selectedAddress) {
+					filteredConfigs = filteredConfigs.filter((r) => String(r['Address of Tenant'] || '').trim() === selectedAddress);
+				}
+
+				const isFarmBlock = selectedBlock === 'farm';
+				const isFlockBlock = selectedBlock === 'flock';
+				if (flockIdWrap) flockIdWrap.style.display = isFarmBlock ? '' : 'none';
+				if (flockNameWrap) flockNameWrap.style.display = isFarmBlock ? '' : 'none';
+
+				if (isFarmBlock) {
+					const expandedRows = [];
+					filteredConfigs.forEach((cfgRow) => {
+						const cfgTenantKey = normalizeTenantId(cfgRow.Tenant_id);
+						const cfgManagedBy = normalizeText(cfgRow['Managed by']);
+						const cfgAddress = normalizeText(cfgRow['Address of Tenant']);
+						const cfgFarmNo = extractFarmNo(cfgRow.Tenant_id, 'wms');
+
+						const relatedFlocks = flockRows.filter((f) => {
+							const fTenantIdKey = normalizeTenantId(f.Tenant_id);
+							if (fTenantIdKey === cfgTenantKey) return true;
+
+							const fManagedBy = normalizeText(f['Managed by']);
+							if (cfgManagedBy && fManagedBy && fManagedBy.indexOf(cfgManagedBy) === 0) return true;
+
+							const fAddress = normalizeText(f['Address of Tenant']);
+							if (cfgAddress && fAddress && fAddress === cfgAddress) return true;
+
+							const fFarmNo = extractFarmNo(f.Tenant_id, 'flock');
+							if (cfgFarmNo && fFarmNo && cfgFarmNo === fFarmNo) return true;
+
+							return false;
+						});
+
+						const dedup = {};
+						const uniqueFlocks = relatedFlocks.filter((f) => {
+							const k = getFlockId(f) + '|' + getFlockName(f);
+							if (dedup[k]) return false;
+							dedup[k] = true;
+							return true;
+						});
+						if (uniqueFlocks.length === 0) {
+							expandedRows.push(Object.assign({}, cfgRow, {
+								__flockId: getFlockId(cfgRow),
+								__flockName: getFlockName(cfgRow)
+							}));
+							return;
+						}
+						uniqueFlocks.forEach((f) => {
+							expandedRows.push(Object.assign({}, cfgRow, {
+								__flockId: getFlockId(f) || getFlockId(cfgRow),
+								__flockName: getFlockName(f) || getFlockName(cfgRow)
+							}));
+						});
+					});
+
+					const flockIds = uniqueSorted(expandedRows, (r) => String(r.__flockId || '').trim());
+					if (flockIdFilterEl) {
+						flockIdFilterEl.innerHTML = ['<option value="">' + this.escape(this.t('allFlockIds')) + '</option>']
+							.concat(flockIds.map((v) => '<option value="' + this.escapeAttr(v) + '">' + this.escape(v) + '</option>'))
+							.join('');
+						flockIdFilterEl.value = flockIds.indexOf(prevFlockId) !== -1 ? prevFlockId : '';
+					}
+					filteredConfigs = expandedRows;
+					const selectedFlockId = flockIdFilterEl ? String(flockIdFilterEl.value || '') : '';
+					if (selectedFlockId) {
+						filteredConfigs = filteredConfigs.filter((r) => String(r.__flockId || '').trim() === selectedFlockId);
+					}
+
+					const flockNames = uniqueSorted(filteredConfigs, (r) => String(r.__flockName || '').trim());
+					if (flockNameFilterEl) {
+						flockNameFilterEl.innerHTML = ['<option value="">' + this.escape(this.t('allFlockNames')) + '</option>']
+							.concat(flockNames.map((v) => '<option value="' + this.escapeAttr(v) + '">' + this.escape(v) + '</option>'))
+							.join('');
+						flockNameFilterEl.value = flockNames.indexOf(prevFlockName) !== -1 ? prevFlockName : '';
+					}
+					const selectedFlockName = flockNameFilterEl ? String(flockNameFilterEl.value || '') : '';
+					if (selectedFlockName) {
+						filteredConfigs = filteredConfigs.filter((r) => String(r.__flockName || '').trim() === selectedFlockName);
+					}
+				}
+
+				filteredConfigs = filteredConfigs.slice().sort((a, b) => {
+					const tenantCmp = String(a.Tenant || '').localeCompare(String(b.Tenant || ''));
+					if (tenantCmp !== 0) return tenantCmp;
+					const tenantIdCmp = String(a.Tenant_id || '').localeCompare(String(b.Tenant_id || ''));
+					if (tenantIdCmp !== 0) return tenantIdCmp;
+					return String(a['Address of Tenant'] || '').localeCompare(String(b['Address of Tenant'] || ''));
+				});
+
+				const configHeaderCols = isFarmBlock
+					? ['hSystem', 'hTenant', 'hAddress', 'hFlock', 'hFlockName']
+					: (isFlockBlock
+						? ['hSystem', 'hTenant', 'tenant_id', 'hAddress', 'hStartFlockCount', 'hStartFlockDate']
+						: ['hSystem', 'hTenant', 'tenant_id', 'hAddress']);
+
+				document.getElementById('setupConfigHead').innerHTML = '<tr><th style="width:44px"></th>' + configHeaderCols.map((key) => {
+					if (key === 'tenant_id') return '<th>Tenant_id</th>';
+					return '<th>' + this.escape(this.t(key)) + '</th>';
+				}).join('') + '</tr>';
+
+				document.getElementById('setupConfigBody').innerHTML = filteredConfigs.length === 0
+					? '<tr><td colspan="' + (configHeaderCols.length + 1) + '"><div class="state-box">' + this.escape(this.t('msgNoConfig')) + '</div></td></tr>'
+					: filteredConfigs.slice(0, 120).map((r) => {
+						const editPayload = this.escapeAttr(JSON.stringify({
+							__block: selectedBlock,
+							SYSTEM: r.SYSTEM || '',
+							Tenant: r.Tenant || '',
+							Tenant_id: r.Tenant_id || '',
+							Managed_by: r['Managed by'] || '',
+							Address_of_Tenant: r['Address of Tenant'] || '',
+							FLOCK_ID: r.__flockId || r.FLOCK_ID || '',
+							FLOCK_NAME: r.__flockName || r.FLOCK_NAME || '',
+							Standards_applied: r['Standards applied'] || '',
+							Start_flock_count: r.Start_flock_count || '',
+							Start_flock_date: r.Start_flock_date || ''
+						}));
+						const editBtn = '<button type="button" class="btn-icon" data-edit-config="' + editPayload + '" title="Edit"><span class="material-symbols-outlined">edit</span></button>';
+						const cells = isFarmBlock
+							? [
+								this.escape(r.SYSTEM || '-'),
+								this.escape(r.Tenant || '-'),
+								this.escape(r['Address of Tenant'] || '-'),
+							]
+							: [
+								this.escape(r.SYSTEM || '-'),
+								this.escape(r.Tenant || '-'),
+								this.escape(r.Tenant_id || '-'),
+								this.escape(r['Address of Tenant'] || '-'),
+							];
+						if (isFarmBlock) {
+							cells.push(this.escape(r.__flockId || r.FLOCK_ID || '-'));
+							cells.push(this.escape(r.__flockName || r.FLOCK_NAME || '-'));
+						}
+						if (isFlockBlock) {
+							cells.push(this.escape(String(r.Start_flock_count || '-')));
+							cells.push(this.escape(this.formatDate(r.Start_flock_date)));
+						}
+						return '<tr><td>' + editBtn + '</td>' + cells.map((c) => '<td>' + c + '</td>').join('') + '</tr>';
+					}).join('');
 
 				document.getElementById('setupProductHead').innerHTML = '<tr><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hProductName')) + '</th><th>UOM</th><th>' + this.escape(this.t('hStatus')) + '</th></tr>';
 				document.getElementById('setupProductBody').innerHTML = products.length === 0
 					? '<tr><td colspan="4"><div class="state-box">' + this.escape(this.t('msgNoProduct')) + '</div></td></tr>'
 					: products.slice(0, 120).map((r) => '<tr><td>' + this.escape(r.SKU || '') + '</td><td>' + this.escape(r['Tên hàng hóa'] || '') + '</td><td>' + this.escape(r.UOM || '') + '</td><td>' + this.escape(r.Status || '') + '</td></tr>').join('');
 
-				document.getElementById('setupFeedHead').innerHTML = '<tr><th>' + this.escape(this.t('fChickenType')) + '</th><th>' + this.escape(this.t('hAge')) + '</th><th>' + this.escape(this.t('fFeedUse')) + '</th><th>' + this.escape(this.t('fFeedType')) + '</th></tr>';
-				document.getElementById('setupFeedBody').innerHTML = filteredFeed.length === 0
-					? '<tr><td colspan="4"><div class="state-box">' + this.escape(this.t('msgNoFeedMatch')) + '</div></td></tr>'
-					: filteredFeed.slice(0, 160).map((r) =>
-						'<tr>' +
-						'<td>' + this.escape(r['Loại Gà'] || '') + '</td>' +
-						'<td>' + this.escape(String(r['Ngày Tuổi'] || '')) + '</td>' +
-						'<td>' + this.escape(String(r['TĂ sử dụng (g/c/n)'] || '')) + '</td>' +
-						'<td>' + this.escape(r['Loại cám'] || '') + '</td>' +
-						'</tr>'
+				const feedColumnsRaw = [];
+				const feedColumnSeen = {};
+				(feedRows.length > 0 ? feedRows : filteredFeed).forEach((row) => {
+					Object.keys(row || {}).forEach((col) => {
+						const key = String(col || '').trim();
+						if (!key || key.indexOf('__') === 0 || feedColumnSeen[key]) return;
+						feedColumnSeen[key] = true;
+						feedColumnsRaw.push(key);
+					});
+				});
+
+				const preferredFeedOrder = [
+					'Loại Gà',
+					'Ngày Tuổi',
+					'TĂ sử dụng (g/c/n)',
+					'Thức ăn sử dụng cộng dồn (g/c)',
+					'Hệ số sử dụng thức ăn',
+					'Hao hụt cộng dồn',
+					'Bình quân khối lượng cơ thể (g)',
+					'Loại cám',
+					'Age',
+					'FC (g/b/d)',
+					'Cum. Feed (g)',
+					'FCR',
+					'Cum. Dep (%)',
+					'BW (gr)'
+				];
+
+				const feedColumns = preferredFeedOrder.filter((c) => feedColumnSeen[c]).concat(
+					feedColumnsRaw.filter((c) => preferredFeedOrder.indexOf(c) === -1)
+				);
+
+				const feedHeaderKeyMap = {
+					'Loại Gà': 'fChickenType',
+					'Ngày Tuổi': 'hAge',
+					'TĂ sử dụng (g/c/n)': 'fFeedUse',
+					'Thức ăn sử dụng cộng dồn (g/c)': 'hCumFeed',
+					'Hệ số sử dụng thức ăn': 'hFcr',
+					'Hao hụt cộng dồn': 'hCumDep',
+					'Bình quân khối lượng cơ thể (g)': 'hBodyWeight',
+					'Loại cám': 'fFeedType',
+					'Age': 'hAge',
+					'FC (g/b/d)': 'fFeedUse',
+					'Cum. Feed (g)': 'hCumFeed',
+					'FCR': 'hFcr',
+					'Cum. Dep (%)': 'hCumDep',
+					'BW (gr)': 'hBodyWeight'
+				};
+
+				document.getElementById('setupFeedHead').innerHTML = '<tr>' + feedColumns.map((c) => {
+					const key = feedHeaderKeyMap[c];
+					const label = key ? this.t(key) : c;
+					return '<th>' + this.escape(label) + '</th>';
+				}).join('') + '</tr>';
+				const feedPrecisionMap = {
+					'Ngày Tuổi': 0,
+					'Age': 0,
+					'TĂ sử dụng (g/c/n)': 1,
+					'FC (g/b/d)': 1,
+					'Thức ăn sử dụng cộng dồn (g/c)': 0,
+					'Cum. Feed (g)': 0,
+					'Hệ số sử dụng thức ăn': 3,
+					'FCR': 3,
+					'Hao hụt cộng dồn': 2,
+					'Cum. Dep (%)': 2,
+					'Bình quân khối lượng cơ thể (g)': 0,
+					'BW (gr)': 0,
+				};
+				const formatFeedCell = (col, raw) => {
+					if (raw === undefined || raw === null || raw === '') return '';
+					const precision = feedPrecisionMap[col];
+					if (precision === undefined) return String(raw);
+					const num = Number(raw);
+					if (!isFinite(num)) return String(raw);
+					if (precision === 0) {
+						return num.toLocaleString('en-US', { maximumFractionDigits: 0 });
+					}
+					return num.toLocaleString('en-US', {
+						minimumFractionDigits: precision,
+						maximumFractionDigits: precision,
+					});
+				};
+				const feedPageSize = this.state.setupFeedPageSize || 20;
+				const feedTotal = filteredFeed.length;
+				const feedTotalPages = Math.max(1, Math.ceil(feedTotal / feedPageSize));
+				let feedPage = this.state.setupFeedPage || 1;
+				if (feedPage > feedTotalPages) feedPage = feedTotalPages;
+				if (feedPage < 1) feedPage = 1;
+				this.state.setupFeedPage = feedPage;
+				const feedStart = (feedPage - 1) * feedPageSize;
+				const feedRowsPage = filteredFeed.slice(feedStart, feedStart + feedPageSize);
+
+				document.getElementById('setupFeedBody').innerHTML = feedTotal === 0
+					? '<tr><td colspan="' + Math.max(feedColumns.length, 1) + '"><div class="state-box">' + this.escape(this.t('msgNoFeedMatch')) + '</div></td></tr>'
+					: feedRowsPage.map((r) =>
+						'<tr>' + feedColumns.map((c) => '<td>' + this.escape(formatFeedCell(c, r[c])) + '</td>').join('') + '</tr>'
 					).join('');
+
+				document.getElementById('setupFeedPagination').innerHTML = this.renderSimplePagination(feedTotal, feedPageSize, feedPage);
 
 				document.getElementById('setupPolicyHead').innerHTML = '<tr><th>' + this.escape(this.t('hSku')) + '</th><th>' + this.escape(this.t('hZero')) + '</th><th>' + this.escape(this.t('hCritical')) + '</th><th>' + this.escape(this.t('hLow')) + '</th><th>' + this.escape(this.t('hHigh')) + '</th><th>' + this.escape(this.t('hStatus')) + '</th><th>' + this.escape(this.t('hNote')) + '</th><th>' + this.escape(this.t('hAction')) + '</th></tr>';
 				document.getElementById('setupPolicyBody').innerHTML = filteredPolicy.length === 0
@@ -1475,29 +1971,319 @@
 			}, 0);
 		},
 
-		openSetupConfigModal: function () {
+		openSetupAccountModal: function (editRow) {
+			const row = editRow || null;
+			const isEdit = !!row;
+			const toIsoDate = (value) => {
+				if (!value) return '';
+				if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+					const y = value.getFullYear();
+					const m = String(value.getMonth() + 1).padStart(2, '0');
+					const d = String(value.getDate()).padStart(2, '0');
+					return y + '-' + m + '-' + d;
+				}
+				const asString = String(value).trim();
+				if (/^\d{4}-\d{2}-\d{2}$/.test(asString)) return asString;
+				const ddmmyyyy = asString.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+				if (ddmmyyyy) {
+					const dd = String(ddmmyyyy[1]).padStart(2, '0');
+					const mm = String(ddmmyyyy[2]).padStart(2, '0');
+					return ddmmyyyy[3] + '-' + mm + '-' + dd;
+				}
+				const parsed = new Date(asString);
+				if (!isNaN(parsed.getTime())) {
+					const y = parsed.getFullYear();
+					const m = String(parsed.getMonth() + 1).padStart(2, '0');
+					const d = String(parsed.getDate()).padStart(2, '0');
+					return y + '-' + m + '-' + d;
+				}
+				return '';
+			};
+			const blockEl = document.getElementById('setupAccountBlockFilter');
+			const currentBlock = row ? String(row.__block || 'factory') : (blockEl ? String(blockEl.value || 'factory') : 'factory');
+			const currentSystemEl = document.getElementById('setupAccountSystemFilter');
+			const currentSystem = row ? String(row.SYSTEM || '') : (currentSystemEl ? String(currentSystemEl.value || '') : '');
+			const initialTenant = row ? String(row.Tenant || '') : '';
+			const initialTenantId = row ? String(row.Tenant_id || '') : '';
+			const initialManagedBy = row ? String(row.Managed_by || '') : '';
+			const initialAddress = row ? String(row.Address_of_Tenant || '') : '';
+			const initialFlockId = row ? String(row.FLOCK_ID || '') : '';
+			const initialFlockName = row ? String(row.FLOCK_NAME || '') : '';
+			const initialStandard = row ? String(row.Standards_applied || '') : '';
+			const initialStartCount = row ? String(row.Start_flock_count || '') : '';
+			const initialStartDate = row ? toIsoDate(row.Start_flock_date) : '';
+			const headFieldStyle = isEdit ? ' style="display:none;"' : '';
+			const blockOptions = [
+				{ value: 'transport', label: this.t('setupBlockTransport') },
+				{ value: 'factory', label: this.t('setupBlockFactory') },
+				{ value: 'farm', label: this.t('setupBlockFarm') },
+				{ value: 'flock', label: this.t('setupBlockFlock') }
+			].map((o) => '<option value="' + this.escapeAttr(o.value) + '" ' + (o.value === currentBlock ? 'selected' : '') + '>' + this.escape(o.label) + '</option>').join('');
+
 			ErpModal.open({
-				title: this.t('setupConfigBtn'),
+				title: this.t('setupAccountModalTitle'),
 				bodyHtml:
 					'<div class="form-grid">' +
-					this.formField(this.t('fSystem'), '<select class="form-control" id="sc_system"><option>WMS</option><option>OMS</option><option>TMS</option></select>') +
-					this.formField(this.t('fTenant'), '<input class="form-control" id="sc_tenant">') +
-					this.formField(this.t('fTenantId'), '<input class="form-control" id="sc_tenant_id">') +
-					this.formField(this.t('fFlock'), '<input class="form-control" id="sc_flock">') +
-					this.formField(this.t('fStandardsApplied'), '<input class="form-control" id="sc_std" list="loaiGaList">') +
+					'<div id="sa_block_wrap"' + headFieldStyle + '>' + this.formField(this.t('fServiceBlock'), '<select class="form-control" id="sa_block">' + blockOptions + '</select>') + '</div>' +
+					'<div id="sa_system_wrap"' + headFieldStyle + '>' + this.formField(this.t('fSystem'), '<select class="form-control" id="sa_system"></select>') + '</div>' +
+					'<div id="sa_farm_ref_wrap">' + this.formField(this.t('fFarmRef'), '<select class="form-control" id="sa_farm_ref"></select>') + '</div>' +
+					'<div id="sa_tenant_wrap">' + this.formField(this.t('fTenant'), '<input class="form-control" id="sa_tenant" value="' + this.escapeAttr(initialTenant) + '">') + '</div>' +
+					'<div id="sa_tenant_id_wrap">' +
+					this.formField(this.t('fTenantId'), '<input class="form-control" id="sa_tenant_id" value="' + this.escapeAttr(initialTenantId) + '">') +
+					'<div id="sa_tenant_id_hint" style="font-size:12px;color:#6f877c;margin-top:6px;padding-left:2px;"></div>' +
 					'</div>' +
-					'<datalist id="loaiGaList">' + this.state.loaiGa.map((g) => '<option value="' + this.escapeAttr(g) + '"></option>').join('') + '</datalist>',
+					'<div id="sa_managed_wrap">' + this.formField(this.t('fManagedBy'), '<input class="form-control" id="sa_managed_by" value="' + this.escapeAttr(initialManagedBy) + '">') + '</div>' +
+					'<div id="sa_address_wrap" class="full">' + this.formField(this.t('fAddress'), '<input class="form-control" id="sa_address" value="' + this.escapeAttr(initialAddress) + '">', true) + '</div>' +
+					'<div id="sa_flock_id_wrap">' + this.formField(this.t('fFlock'), '<input class="form-control" id="sa_flock_id" value="' + this.escapeAttr(initialFlockId) + '">') + '</div>' +
+					'<div id="sa_flock_name_wrap">' + this.formField(this.t('fFlockName'), '<input class="form-control" id="sa_flock_name" value="' + this.escapeAttr(initialFlockName) + '">') + '</div>' +
+					'<div id="sa_standard_wrap" class="form-group full">' +
+					'<label class="form-label">' + this.escape(this.t('fStandardsApplied')) + '</label>' +
+					'<div id="sa_standard_list" style="border:1px solid var(--line);border-radius:8px;max-height:180px;overflow:auto;padding:8px;background:#fff;"></div>' +
+					'</div>' +
+					'<div id="sa_start_count_wrap">' + this.formField(this.t('fStartFlockCount'), '<input class="form-control" id="sa_start_count" type="number" value="' + this.escapeAttr(initialStartCount) + '">') + '</div>' +
+					'<div id="sa_start_date_wrap">' + this.formField(this.t('fStartFlockDate'), '<input class="form-control" id="sa_start_date" type="date" value="' + this.escapeAttr(initialStartDate) + '">') + '</div>' +
+					'</div>',
 				onSubmit: async () => {
+					const block = this.value('sa_block') || 'factory';
+					const system = this.value('sa_system');
+					const farmRefTenantId = this.value('sa_farm_ref');
+					const selectedStandards = Array.from(document.querySelectorAll('input[name="sa_standard_chk"]:checked'))
+						.map((el) => String(el.value || '').trim())
+						.filter(Boolean);
+					let tenant = this.value('sa_tenant');
+					let tenantId = this.value('sa_tenant_id');
+					if (block === 'factory') {
+						const prefix = system + '_0';
+						tenant = prefix;
+						const rawTenantId = String(tenantId || '').trim();
+						if (!rawTenantId) {
+							tenantId = prefix;
+						} else if (rawTenantId.toUpperCase().indexOf(prefix.toUpperCase()) === 0) {
+							tenantId = rawTenantId;
+						} else {
+							tenantId = prefix + rawTenantId;
+						}
+					}
+					if (block === 'farm') {
+						tenantId = tenant;
+					}
 					const payload = {
-						SYSTEM: this.value('sc_system'),
-						Tenant: this.value('sc_tenant'),
-						Tenant_id: this.value('sc_tenant_id'),
-						FLOCK_ID: this.value('sc_flock'),
-						'Standards applied': this.value('sc_std')
+						SYSTEM: system,
+						Tenant: tenant,
+						Tenant_id: tenantId,
+						'Managed by': this.value('sa_managed_by'),
+						'Address of Tenant': this.value('sa_address')
 					};
+
+					if (block === 'flock') {
+						payload.FLOCK_ID = this.value('sa_flock_id');
+						payload.FLOCK_NAME = this.value('sa_flock_name');
+						payload['Standards applied'] = selectedStandards.join(', ');
+					}
+					if (block === 'flock') {
+						const startCount = this.value('sa_start_count');
+						payload.Start_flock_count = startCount ? Number(startCount) : '';
+						payload.Start_flock_date = this.value('sa_start_date');
+					}
+					if (isEdit) {
+						payload.__confirmUpdate = true;
+					}
+
 					await this.submitWithDuplicateConfirm('upsertConfig', payload, this.t('modalDuplicateConfigMsg'));
+
+					if (block === 'flock' && farmRefTenantId) {
+						const farmRow = (this.state.configs || []).find((r) => String(r.Tenant_id || '').trim() === farmRefTenantId);
+						if (farmRow) {
+							await this.rpc('upsertConfig', {
+								SYSTEM: farmRow.SYSTEM || 'WMS',
+								Tenant: farmRow.Tenant || '',
+								Tenant_id: farmRow.Tenant_id || farmRefTenantId,
+								'Managed by': farmRow['Managed by'] || '',
+								'Address of Tenant': farmRow['Address of Tenant'] || '',
+								FLOCK_ID: farmRow.FLOCK_ID || '',
+								FLOCK_NAME: farmRow.FLOCK_NAME || '',
+								'Standards applied': payload['Standards applied'] || '',
+								Start_flock_count: farmRow.Start_flock_count || '',
+								Start_flock_date: farmRow.Start_flock_date || '',
+								__confirmUpdate: true
+							});
+							await this.loadBootstrap();
+							await this.loadSetup(true);
+						}
+					}
 				}
 			});
+
+			setTimeout(() => {
+				const blockSelect = document.getElementById('sa_block');
+				const systemSelect = document.getElementById('sa_system');
+				const farmRefWrap = document.getElementById('sa_farm_ref_wrap');
+				const farmRefSelect = document.getElementById('sa_farm_ref');
+				const tenantWrap = document.getElementById('sa_tenant_wrap');
+				const tenantInput = document.getElementById('sa_tenant');
+				const tenantIdWrap = document.getElementById('sa_tenant_id_wrap');
+				const tenantIdInput = document.getElementById('sa_tenant_id');
+				const tenantIdHint = document.getElementById('sa_tenant_id_hint');
+				const addressWrap = document.getElementById('sa_address_wrap');
+				const addressInput = document.getElementById('sa_address');
+				const flockIdWrap = document.getElementById('sa_flock_id_wrap');
+				const flockNameWrap = document.getElementById('sa_flock_name_wrap');
+				const standardList = document.getElementById('sa_standard_list');
+				const standardWrap = document.getElementById('sa_standard_wrap');
+				const startCountWrap = document.getElementById('sa_start_count_wrap');
+				const startDateWrap = document.getElementById('sa_start_date_wrap');
+				if (!blockSelect || !systemSelect) return;
+				const getFactoryPrefix = () => String(systemSelect.value || 'OMS') + '_0';
+				const getFarmReferenceRows = () => (this.state.configs || []).filter((r) => String(r.SYSTEM || '').trim() === 'WMS' && /^WMS_\d+$/i.test(String(r.Tenant_id || '').trim()));
+				const fillFarmReferenceOptions = () => {
+					if (!farmRefSelect) return;
+					const rows = getFarmReferenceRows();
+					const flocksByTenant = {};
+					(this.state.flocks || []).forEach((f) => {
+						const tenantId = String(f.Tenant_id || '').trim();
+						const flockId = String(f.FLOCK_ID || '').trim();
+						const flockName = String(f.FLOCK_NAME || '').trim();
+						if (!tenantId || !flockId) return;
+						if (!flocksByTenant[tenantId]) flocksByTenant[tenantId] = [];
+						const token = flockName ? (flockId + ' (' + flockName + ')') : flockId;
+						if (flocksByTenant[tenantId].indexOf(token) === -1) {
+							flocksByTenant[tenantId].push(token);
+						}
+					});
+					farmRefSelect.innerHTML = ['<option value="">-</option>']
+						.concat(rows.map((r) => {
+							const tenantId = String(r.Tenant_id || '').trim();
+							const tenant = String(r.Tenant || '').trim();
+							const flockInfo = (flocksByTenant[tenantId] || []).slice(0, 3).join(', ');
+							const moreCount = Math.max((flocksByTenant[tenantId] || []).length - 3, 0);
+							const flockSuffix = flockInfo
+								? (' | ' + flockInfo + (moreCount > 0 ? (' +' + moreCount) : ''))
+								: '';
+							const label = tenantId + (tenant ? (' - ' + tenant) : '') + flockSuffix;
+							return '<option value="' + this.escapeAttr(tenantId) + '">' + this.escape(label) + '</option>';
+						}))
+						.join('');
+				};
+
+				const fillStandardOptions = () => {
+					if (!standardList) return;
+					const values = Array.from(new Set(
+						(this.state.loaiGa || [])
+							.map((v) => String(v || '').trim())
+							.filter((v) => v && v.indexOf(',') === -1)
+					)).sort();
+					const previousSelected = Array.from(document.querySelectorAll('input[name="sa_standard_chk"]:checked'))
+						.map((el) => String(el.value || '').trim())
+						.filter(Boolean);
+					const initialSelected = String(initialStandard || '').split(',').map((s) => s.trim()).filter(Boolean);
+					const sourceSelected = previousSelected.length > 0 ? previousSelected : initialSelected;
+					const selectedSet = {};
+					sourceSelected.forEach((v) => { selectedSet[v] = true; });
+					if (values.length === 0) {
+						standardList.innerHTML = '<div style="font-size:12px;color:#64748b;">-</div>';
+						return;
+					}
+					standardList.innerHTML = values.map((v) => {
+						const checked = selectedSet[v] ? 'checked' : '';
+						return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer;">'
+							+ '<input type="checkbox" name="sa_standard_chk" value="' + this.escapeAttr(v) + '" ' + checked + '>'
+							+ '<span>' + this.escape(v) + '</span>'
+							+ '</label>';
+					}).join('');
+				};
+
+				const setSystemOptions = (allowed, keepCurrent) => {
+					const before = keepCurrent ? String(systemSelect.value || '') : '';
+					systemSelect.innerHTML = allowed.map((s) => '<option value="' + this.escapeAttr(s) + '">' + this.escape(s) + '</option>').join('');
+					if (before && allowed.indexOf(before) !== -1) {
+						systemSelect.value = before;
+					} else if (allowed.indexOf(currentSystem) !== -1) {
+						systemSelect.value = currentSystem;
+					} else {
+						systemSelect.value = allowed[0] || '';
+					}
+				};
+
+				const syncByBlock = () => {
+					const block = String(blockSelect.value || 'factory');
+					if (block === 'transport') setSystemOptions(['TMS'], true);
+					if (block === 'factory') setSystemOptions(['OMS', 'WMS'], true);
+					if (block === 'farm') setSystemOptions(['WMS'], true);
+					if (block === 'flock') setSystemOptions(['FMS'], true);
+
+					const isFactory = block === 'factory';
+					const isFarm = block === 'farm';
+					const isFlock = block === 'flock';
+					if (farmRefWrap) farmRefWrap.style.display = isFlock ? '' : 'none';
+					if (addressWrap) addressWrap.style.display = isFlock ? 'none' : '';
+					if (tenantWrap) tenantWrap.style.display = isFactory ? 'none' : '';
+					if (tenantInput) tenantInput.readOnly = isFactory;
+					if (tenantIdWrap) tenantIdWrap.style.display = isFarm ? 'none' : '';
+					if (tenantIdHint) {
+						tenantIdHint.style.display = isFactory ? '' : 'none';
+						tenantIdHint.textContent = isFactory
+							? ('Prefix cố định: ' + getFactoryPrefix() + ' | nhập hậu tố hoặc nhập đầy đủ Tenant ID')
+							: '';
+					}
+					if (isFactory) {
+						if (tenantInput) tenantInput.value = getFactoryPrefix();
+					} else {
+						if (tenantInput && /^(OMS|WMS)_0$/i.test(String(tenantInput.value || ''))) {
+							tenantInput.value = '';
+						}
+					}
+					if (flockIdWrap) flockIdWrap.style.display = isFlock ? '' : 'none';
+					if (flockNameWrap) flockNameWrap.style.display = isFlock ? '' : 'none';
+					if (standardWrap) standardWrap.style.display = isFlock ? '' : 'none';
+					if (startCountWrap) startCountWrap.style.display = isFlock ? '' : 'none';
+					if (startDateWrap) startDateWrap.style.display = isFlock ? '' : 'none';
+
+					if (isFarm && tenantInput && tenantIdInput) {
+						tenantIdInput.value = tenantInput.value;
+					}
+
+					if (isFlock) {
+						fillFarmReferenceOptions();
+						fillStandardOptions();
+						if (addressInput && !farmRefSelect?.value && !isEdit) addressInput.value = '';
+					}
+				};
+
+				blockSelect.addEventListener('change', syncByBlock);
+				systemSelect.addEventListener('change', () => {
+					if (String(blockSelect.value || '') !== 'factory') return;
+					syncByBlock();
+				});
+				if (tenantInput) {
+					tenantInput.addEventListener('input', () => {
+						if (String(blockSelect.value || '') !== 'farm') return;
+						if (tenantIdInput) tenantIdInput.value = tenantInput.value;
+					});
+				}
+				if (farmRefSelect) {
+					farmRefSelect.addEventListener('change', () => {
+						if (String(blockSelect.value || '') !== 'flock') return;
+						const selected = String(farmRefSelect.value || '').trim();
+						if (!addressInput) return;
+						if (!selected) {
+							addressInput.value = '';
+							return;
+						}
+						const match = (this.state.configs || []).find((r) => String(r.Tenant_id || '').trim() === selected);
+						addressInput.value = match ? String(match['Address of Tenant'] || '') : '';
+					});
+				}
+				syncByBlock();
+			}, 0);
+		},
+
+		openSetupAccountEditModal: function (encoded) {
+			try {
+				const parsed = JSON.parse(encoded || '{}');
+				this.openSetupAccountModal(parsed);
+			} catch (e) {
+				this.toast(e.message || this.t('toastSaveFailed'), 'error');
+			}
 		},
 
 		openSetupProductModal: function () {
@@ -1520,32 +2306,6 @@
 						Status: this.value('sp_status')
 					};
 					await this.submitWithDuplicateConfirm('upsertProductMaster', payload, this.t('modalDuplicateProductMsg'));
-				}
-			});
-		},
-
-		openSetupFeedModal: function () {
-			const loaiGaOptions = this.state.loaiGa.map((g) => '<option value="' + this.escapeAttr(g) + '"></option>').join('');
-			const productNames = this.state.products.map((p) => '<option value="' + this.escapeAttr(p['Tên hàng hóa'] || '') + '"></option>').join('');
-			ErpModal.open({
-				title: this.t('setupFeedBtn'),
-				bodyHtml:
-					'<div class="form-grid">' +
-					this.formField(this.t('fChickenType'), '<input class="form-control" id="sf_loaiga" list="sfLoaigaList">') +
-					this.formField(this.t('fAgeDay'), '<input class="form-control" id="sf_ngaytuoi" type="number">') +
-					this.formField(this.t('fFeedUse'), '<input class="form-control" id="sf_ta" type="number" step="0.01">') +
-					this.formField(this.t('fFeedType'), '<input class="form-control" id="sf_cam" list="sfCamList">') +
-					'</div>' +
-					'<datalist id="sfLoaigaList">' + loaiGaOptions + '</datalist>' +
-					'<datalist id="sfCamList">' + productNames + '</datalist>',
-				onSubmit: async () => {
-					const payload = {
-						'Loại Gà': this.value('sf_loaiga'),
-						'Ngày Tuổi': Number(this.value('sf_ngaytuoi')),
-						'TĂ sử dụng (g/c/n)': Number(this.value('sf_ta')),
-						'Loại cám': this.value('sf_cam')
-					};
-					await this.submitWithDuplicateConfirm('upsertFeedStandard', payload, this.t('modalDuplicateStandardMsg'));
 				}
 			});
 		},

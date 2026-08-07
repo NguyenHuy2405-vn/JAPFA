@@ -45,7 +45,7 @@ function getSpreadsheet_() {
   const spreadsheetId =
     typeof SPREADSHEET_ID !== "undefined" && SPREADSHEET_ID
       ? SPREADSHEET_ID
-      : "1UKHhjwlGNY7aJpDP7-3ztRK1cOO9C3QV85pIDGI4B4I";
+      : "1zc-aLYRSdjyyRN2NAnalkPc2qUAgUT-0MCg7TI4ujAw";
   return SpreadsheetApp.openById(spreadsheetId);
 }
 
