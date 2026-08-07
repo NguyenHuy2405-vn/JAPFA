@@ -1,0 +1,103 @@
+<!--
+  FILE: Components/Charts.html
+  PURPOSE: Wrapper cho Google Charts — dùng cho:
+           - FMS: Population Actual vs Estimate (LineChart) — getPopulationChartData()
+           - WMS: Stock trend theo transaction history (LineChart/ColumnChart)
+           - Dashboard: Order status breakdown (PieChart) từ getDashboardOMS().statusCounts
+  LOAD: gapi loader nằm ở Index.html (google.charts.load), file này chỉ chứa
+        container templates + hàm helper vẽ chart, KHÔNG tự load script (tránh load trùng).
+  DEPENDENCIES: Google Visualization API (corechart), style.css
+-->
+<template id="tpl-chart-container">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <h3 style="margin:0;font-size:14px;font-weight:700;" class="chart-title">Biểu đồ</h3>
+    </div>
+    <div class="chart-canvas" style="width:100%;height:320px;"></div>
+    <div class="state-box chart-empty" style="display:none;">
+      <span class="material-symbols-outlined">bar_chart</span>
+      <span>Chưa có dữ liệu để vẽ biểu đồ.</span>
+    </div>
+  </div>
+</template>
+
+<script>
+/**
+ * ErpChart — helper mỏng bọc Google Charts, dùng chung cho mọi page.
+ * PHẢI gọi sau khi google.charts.load('current', {packages:['corechart']})
+ * đã resolve (Index.html chịu trách nhiệm load 1 lần duy nhất, set
+ * window.__gchartsReady = true khi xong).
+ */
+const ErpChart = {
+  /**
+   * Vẽ LineChart — dùng cho Population Actual vs Estimate (FMS) hoặc Stock trend (WMS).
+   * @param {string} elId - id của div .chart-canvas
+   * @param {Array<Array>} dataTable - hàng đầu là header, VD [['Ngày Tuổi','Actual','Estimate'], [1, 120, 118], ...]
+   * @param {Object} [opts]
+   * @example
+   * ErpChart.drawLine('fmsPopChart', [['Ngày Tuổi','POPULATION_act','POPULATION_est'], [1,1000,1000]]);
+   */
+  drawLine: function (elId, dataTable, opts) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (!dataTable || dataTable.length <= 1) { this._showEmpty(el); return; }
+    this._hideEmpty(el);
+    const data = google.visualization.arrayToDataTable(dataTable);
+    const chart = new google.visualization.LineChart(el);
+    chart.draw(data, Object.assign({
+      curveType: 'function',
+      legend: { position: 'bottom' },
+      colors: ['#1b4d3e', '#94a3b8'],
+      chartArea: { width: '90%', height: '75%' },
+      backgroundColor: 'transparent'
+    }, opts || {}));
+  },
+
+  /**
+   * Vẽ PieChart — dùng cho Order status breakdown (Dashboard OMS).
+   * @param {string} elId
+   * @param {Array<Array>} dataTable - VD [['Status','Count'], ['Chờ giao', 5], ['Hoàn tất', 12]]
+   */
+  drawPie: function (elId, dataTable, opts) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (!dataTable || dataTable.length <= 1) { this._showEmpty(el); return; }
+    this._hideEmpty(el);
+    const data = google.visualization.arrayToDataTable(dataTable);
+    const chart = new google.visualization.PieChart(el);
+    chart.draw(data, Object.assign({
+      legend: { position: 'right' },
+      colors: ['#ffc107', '#0d6efd', '#198754', '#dc3545'],
+      chartArea: { width: '92%', height: '85%' },
+      backgroundColor: 'transparent'
+    }, opts || {}));
+  },
+
+  /** Vẽ ColumnChart — dùng cho Inventory theo SKU (WMS Dashboard). */
+  drawColumn: function (elId, dataTable, opts) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (!dataTable || dataTable.length <= 1) { this._showEmpty(el); return; }
+    this._hideEmpty(el);
+    const data = google.visualization.arrayToDataTable(dataTable);
+    const chart = new google.visualization.ColumnChart(el);
+    chart.draw(data, Object.assign({
+      legend: { position: 'none' },
+      colors: ['#245d4b'],
+      chartArea: { width: '88%', height: '75%' },
+      backgroundColor: 'transparent'
+    }, opts || {}));
+  },
+
+  _showEmpty: function (canvasEl) {
+    canvasEl.style.display = 'none';
+    const empty = canvasEl.parentElement.querySelector('.chart-empty');
+    if (empty) empty.style.display = 'flex';
+  },
+  _hideEmpty: function (canvasEl) {
+    canvasEl.style.display = 'block';
+    const empty = canvasEl.parentElement.querySelector('.chart-empty');
+    if (empty) empty.style.display = 'none';
+  }
+};
+</script>

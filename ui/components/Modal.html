@@ -1,0 +1,89 @@
+<!--
+  FILE: Components/Modal.html
+  PURPOSE: Modal shell dùng chung cho mọi form Create/Edit (Order, Adjustment,
+           Inbound/Outbound, Config, Product Master, Feed Standard, Policy Threshold, MORT_act).
+  USAGE (client): ErpModal.open({title, bodyHtml, size, onSubmit})
+  DEPENDENCIES: style.css
+-->
+<div class="modal-overlay" id="erpModalOverlay">
+  <div class="modal-box" id="erpModalBox">
+    <div class="modal-header">
+      <h3 id="erpModalTitle">Tiêu đề</h3>
+      <button class="btn-icon" onclick="ErpModal.close()"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <div class="modal-body" id="erpModalBody"><!-- form-grid render động theo page --></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="erpModalCancelBtn" onclick="ErpModal.close()">Hủy</button>
+      <button class="btn btn-primary" id="erpModalSubmitBtn">
+        <span class="material-symbols-outlined">check</span> <span id="erpModalSubmitLabel">Lưu</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  /**
+   * ErpModal — modal điều khiển tập trung, mỗi page tự cung cấp bodyHtml + onSubmit.
+   * Đảm bảo chỉ 1 modal tồn tại tại 1 thời điểm (tránh xung đột Order/Adjustment/Setup).
+   */
+  const ErpModal = {
+    _onSubmit: null,
+
+    _t: function (key, fallback) {
+      if (window.App && typeof window.App.t === 'function') return window.App.t(key);
+      return fallback;
+    },
+
+    /**
+     * @param {Object} cfg
+     * @param {string} cfg.title
+     * @param {string} cfg.bodyHtml - HTML form-grid (page tự build)
+     * @param {'md'|'lg'} [cfg.size='md']
+     * @param {string} [cfg.submitLabel='Lưu']
+     * @param {Function} cfg.onSubmit - async function() -> {valid:boolean} — page tự đọc input & validate
+     * @example
+     * ErpModal.open({ title:'Tạo Order mới', bodyHtml: OMS.buildCreateOrderForm(), onSubmit: OMS.submitCreateOrder });
+     */
+    open: function (cfg) {
+      document.getElementById('erpModalTitle').textContent = cfg.title || '';
+      document.getElementById('erpModalBody').innerHTML = cfg.bodyHtml || '';
+      document.getElementById('erpModalSubmitLabel').textContent = cfg.submitLabel || this._t('commonSave', 'Lưu');
+      document.getElementById('erpModalCancelBtn').textContent = this._t('commonCancel', 'Hủy');
+      document.getElementById('erpModalBox').classList.toggle('modal-lg', cfg.size === 'lg');
+      this._onSubmit = cfg.onSubmit || null;
+
+      const submitBtn = document.getElementById('erpModalSubmitBtn');
+      submitBtn.style.display = '';
+      submitBtn.disabled = false;
+      submitBtn.onclick = () => { if (this._onSubmit) this._onSubmit(submitBtn); };
+
+      document.getElementById('erpModalOverlay').classList.add('is-open');
+      if (typeof cfg.onOpen === 'function') {
+        setTimeout(function () { cfg.onOpen(); }, 0);
+      }
+    },
+
+    close: function () {
+      document.getElementById('erpModalOverlay').classList.remove('is-open');
+      document.getElementById('erpModalBody').innerHTML = '';
+      const submitBtn = document.getElementById('erpModalSubmitBtn');
+      submitBtn.style.display = '';
+      submitBtn.disabled = false;
+      this._onSubmit = null;
+    },
+
+    /** Bật/tắt trạng thái loading trên nút Submit khi đang gọi google.script.run. */
+    setSubmitting: function (isSubmitting) {
+      const btn = document.getElementById('erpModalSubmitBtn');
+      btn.disabled = isSubmitting;
+      document.getElementById('erpModalSubmitLabel').textContent = isSubmitting
+        ? this._t('commonSaving', 'Đang lưu...')
+        : this._t('commonSave', 'Lưu');
+    },
+
+    setSubmitEnabled: function (enabled) {
+      const btn = document.getElementById('erpModalSubmitBtn');
+      btn.disabled = !enabled;
+    }
+  };
+</script>
