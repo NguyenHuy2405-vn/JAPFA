@@ -292,7 +292,10 @@ function updateFmsMortAct(payload) {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i] || {};
       if (String(r["FLOCK_ID"] || "").trim() !== flockId) continue;
-      if (_fmsDateKey_(r["DATE"] || r["Date"] || r["Ngày thực hiện"]) !== dateKey) continue;
+      if (
+        _fmsDateKey_(r["DATE"] || r["Date"] || r["Ngày thực hiện"]) !== dateKey
+      )
+        continue;
       if (!target) {
         target = r;
         continue;
@@ -309,7 +312,11 @@ function updateFmsMortAct(payload) {
 
     const headers = getSheetHeaders_("FMS");
     const mortActColIdx = headers.findIndex(function (h) {
-      return String(h || "").trim().toUpperCase() === "MORT_ACT";
+      return (
+        String(h || "")
+          .trim()
+          .toUpperCase() === "MORT_ACT"
+      );
     });
     if (mortActColIdx < 0) {
       throw new Error('Không tìm thấy cột "MORT_act" trên sheet FMS.');

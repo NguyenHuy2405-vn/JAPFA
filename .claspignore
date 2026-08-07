@@ -1,0 +1,10 @@
+# Exclude non-source folders from Apps Script push
+backup/**
+database/**
+documents/**
+japfa UI1/**
+
+# Local editor/runtime noise
+**/.DS_Store
+**/Thumbs.db
+**/*.md
