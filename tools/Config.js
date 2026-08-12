@@ -1,4 +1,4 @@
-const SPREADSHEET_ID = "1zc-aLYRSdjyyRN2NAnalkPc2qUAgUT-0MCg7TI4ujAw";
+const SPREADSHEET_ID = "1ZXWJHoLeRXgNTSOn0vkO7eMl7Sz1u2VCsunWSWf5QWw";
 
 function exportUIBundleForAI() {
   const CONFIG = {

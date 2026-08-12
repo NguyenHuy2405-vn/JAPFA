@@ -19,11 +19,11 @@
  */
 function getProductMasterList(filters) {
   try {
-    const rows = getSheetData_('PRODUCT_MASTER');
+    const rows = getSheetData_("PRODUCT_MASTER");
     return success_(filterRows_(rows, filters));
   } catch (e) {
-    Logger_.logError('ProductService.getProductMasterList', e);
-    return error_(e, 'GET_PRODUCT_MASTER_FAILED');
+    Logger_.logError("ProductService.getProductMasterList", e);
+    return error_(e, "GET_PRODUCT_MASTER_FAILED");
   }
 }
 
@@ -37,14 +37,16 @@ function getProductMasterList(filters) {
  */
 function getActiveProductNames() {
   try {
-    const rows = getSheetData_('PRODUCT_MASTER').filter(function (r) {
-      return String(r['Status']).trim().toUpperCase() === 'ACTIVE';
+    const rows = getSheetData_("PRODUCT_MASTER").filter(function (r) {
+      return String(r["Status"]).trim().toUpperCase() === "ACTIVE";
     });
-    const names = rows.map(function (r) { return r['Tên hàng hóa']; });
+    const names = rows.map(function (r) {
+      return r["Tên hàng hóa"];
+    });
     return success_(names);
   } catch (e) {
-    Logger_.logError('ProductService.getActiveProductNames', e);
-    return error_(e, 'GET_ACTIVE_PRODUCT_NAMES_FAILED');
+    Logger_.logError("ProductService.getActiveProductNames", e);
+    return error_(e, "GET_ACTIVE_PRODUCT_NAMES_FAILED");
   }
 }
 
@@ -58,8 +60,12 @@ function getActiveProductNames() {
  * findProductBySku_('C01S+_Bag_40');
  */
 function findProductBySku_(sku) {
-  const rows = getSheetData_('PRODUCT_MASTER');
-  return rows.find(function (r) { return String(r['SKU']).trim() === String(sku).trim(); }) || null;
+  const rows = getSheetData_("PRODUCT_MASTER");
+  return (
+    rows.find(function (r) {
+      return String(r["SKU"]).trim() === String(sku).trim();
+    }) || null
+  );
 }
 
 /**
@@ -73,10 +79,43 @@ function findProductBySku_(sku) {
  */
 function getProductBySKU(sku) {
   try {
-    Validation_.requireField(sku, 'SKU');
+    Validation_.requireField(sku, "SKU");
     return success_(findProductBySku_(sku));
   } catch (e) {
-    Logger_.logError('ProductService.getProductBySKU', e);
-    return error_(e, 'GET_PRODUCT_BY_SKU_FAILED');
+    Logger_.logError("ProductService.getProductBySKU", e);
+    return error_(e, "GET_PRODUCT_BY_SKU_FAILED");
+  }
+}
+
+/**
+ * Lấy danh sách packaging SKU theo feed name (exact match sau khi trim).
+ *
+ * @param {string} feedName
+ * @returns {{success:boolean, data:Object[]}}
+ */
+function getPackagingSkusByFeedName(feedName) {
+  try {
+    Validation_.requireField(feedName, "feedName");
+    const target = String(feedName).trim();
+
+    const rows = getSheetData_("PRODUCT_MASTER").filter(function (r) {
+      const candidate = String(
+        r["Feed_Name"] || r["Tên hàng hóa"] || "",
+      ).trim();
+      return candidate === target;
+    });
+
+    const data = rows.map(function (r) {
+      return {
+        SKU: r["SKU"] || "",
+        UOM: r["UOM"] || "",
+        UOM_weight_kg: Number(r["UOM_weight_kg"]) || 0,
+      };
+    });
+
+    return success_(data);
+  } catch (e) {
+    Logger_.logError("ProductService.getPackagingSkusByFeedName", e);
+    return error_(e, "GET_PACKAGING_SKUS_FAILED");
   }
 }

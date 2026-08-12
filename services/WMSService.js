@@ -353,3 +353,32 @@ function _resolveWmsSheetKey_(scope) {
       '" (chỉ nhận "factory" hoặc "farm").',
   );
 }
+
+/**
+ * Tìm DATE giao dịch WMS_farm gần nhất < hôm nay theo flock.
+ *
+ * @param {string} flockId
+ * @returns {Date|null}
+ */
+function _findLatestWmsFarmDateBeforeToday_(flockId) {
+  const target = String(flockId || "").trim();
+  if (!target) return null;
+
+  const rows = getSheetData_("WMS_FARM").filter(function (r) {
+    return String(r["FLOCK_ID"] || "").trim() === target;
+  });
+
+  if (rows.length === 0) return null;
+
+  const today = getTodayInTZ_();
+  let latest = null;
+  rows.forEach(function (r) {
+    const d = new Date(r["DATE"]);
+    if (isNaN(d.getTime())) return;
+    if (d < today && (!latest || d > latest)) {
+      latest = d;
+    }
+  });
+
+  return latest;
+}

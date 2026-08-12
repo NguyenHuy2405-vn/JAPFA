@@ -9,14 +9,20 @@
   <div class="modal-box" id="erpModalBox">
     <div class="modal-header">
       <h3 id="erpModalTitle">Tiêu đề</h3>
-      <button class="btn-icon" onclick="ErpModal.close()"><span class="material-symbols-outlined">close</span></button>
+      <div class="modal-header-actions">
+        <button class="btn btn-sm" id="erpModalEditBtn" title="Sửa" style="display:none;">
+          <span class="material-symbols-outlined">edit</span> <span>Sửa</span>
+        </button>
+        <button class="btn-icon" onclick="ErpModal.close()"><span
+            class="material-symbols-outlined">close</span></button>
+      </div>
     </div>
     <div class="modal-body" id="erpModalBody"><!-- form-grid render động theo page --></div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" id="erpModalCancelBtn" onclick="ErpModal.close()">Hủy</button>
-      <button class="btn btn-primary" id="erpModalSubmitBtn">
+    <div class="modal-footer" id="erpModalFooter">
+      <button class="btn btn-primary btn-sm" id="erpModalSubmitBtn">
         <span class="material-symbols-outlined">check</span> <span id="erpModalSubmitLabel">Lưu</span>
       </button>
+      <button class="btn btn-ghost" id="erpModalCancelBtn" onclick="ErpModal.close()">Hủy</button>
     </div>
   </div>
 </div>
@@ -28,6 +34,7 @@
    */
   const ErpModal = {
     _onSubmit: null,
+    _onEdit: null,
 
     _t: function (key, fallback) {
       if (window.App && typeof window.App.t === 'function') return window.App.t(key);
@@ -40,7 +47,8 @@
      * @param {string} cfg.bodyHtml - HTML form-grid (page tự build)
      * @param {'md'|'lg'} [cfg.size='md']
      * @param {string} [cfg.submitLabel='Lưu']
-     * @param {Function} cfg.onSubmit - async function() -> {valid:boolean} — page tự đọc input & validate
+     * @param {Function} [cfg.onSubmit] - async function() -> {valid:boolean} — page tự đọc input & validate
+     * @param {Function} [cfg.onEdit] - function() — gọi khi nhấn nút Edit ở header (chỉ dùng cho detail modal)
      * @example
      * ErpModal.open({ title:'Tạo Order mới', bodyHtml: OMS.buildCreateOrderForm(), onSubmit: OMS.submitCreateOrder });
      */
@@ -51,11 +59,21 @@
       document.getElementById('erpModalCancelBtn').textContent = this._t('commonCancel', 'Hủy');
       document.getElementById('erpModalBox').classList.toggle('modal-lg', cfg.size === 'lg');
       this._onSubmit = cfg.onSubmit || null;
+      this._onEdit = cfg.onEdit || null;
 
       const submitBtn = document.getElementById('erpModalSubmitBtn');
       submitBtn.style.display = '';
       submitBtn.disabled = false;
       submitBtn.onclick = () => { if (this._onSubmit) this._onSubmit(submitBtn); };
+
+      // Hiển thị nút Edit nếu có callback onEdit
+      const editBtn = document.getElementById('erpModalEditBtn');
+      if (cfg.onEdit && typeof cfg.onEdit === 'function') {
+        editBtn.style.display = '';
+        editBtn.onclick = () => { cfg.onEdit(); };
+      } else {
+        editBtn.style.display = 'none';
+      }
 
       document.getElementById('erpModalOverlay').classList.add('is-open');
       if (typeof cfg.onOpen === 'function') {
@@ -69,7 +87,10 @@
       const submitBtn = document.getElementById('erpModalSubmitBtn');
       submitBtn.style.display = '';
       submitBtn.disabled = false;
+      const editBtn = document.getElementById('erpModalEditBtn');
+      editBtn.style.display = 'none';
       this._onSubmit = null;
+      this._onEdit = null;
     },
 
     /** Bật/tắt trạng thái loading trên nút Submit khi đang gọi google.script.run. */

@@ -29,7 +29,9 @@
 function readFMS(filters) {
   try {
     const rows = getSheetData_("FMS");
-    return success_(filterRows_(rows, filters));
+    const filtered = filterRows_(rows, filters);
+    _attachFmsStockLevelDisplay_(filtered);
+    return success_(filtered);
   } catch (e) {
     Logger_.logError("FMSService.readFMS", e);
     return error_(e, "READ_FMS_FAILED");
@@ -68,6 +70,8 @@ function getFlockCurrentSummary(flockId) {
     }
     if (!current && rows.length > 0) current = rows[0];
     if (!current) return success_(null);
+
+    _attachFmsStockLevelDisplay_([current]);
 
     // MORT tích luỹ = tổng MORT_act các dòng Actual của Flock (chỉ cộng số
     // thực tế đã nhập, không cộng MORT_est — tránh nhầm số ước tính thành
@@ -133,6 +137,7 @@ function getFlockSummaryList(tenantId) {
     });
 
     const allRows = getSheetData_("FMS");
+    _attachFmsStockLevelDisplay_(allRows);
     const rowsByFlock = {};
     allRows.forEach(function (r) {
       const flockId = String(r["FLOCK_ID"] || "").trim();
@@ -294,8 +299,9 @@ function updateFmsMortAct(payload) {
       if (String(r["FLOCK_ID"] || "").trim() !== flockId) continue;
       if (
         _fmsDateKey_(r["DATE"] || r["Date"] || r["Ngày thực hiện"]) !== dateKey
-      )
+      ) {
         continue;
+      }
       if (!target) {
         target = r;
         continue;
@@ -384,4 +390,161 @@ function _fmsDateKey_(value) {
   const parsed = new Date(text);
   if (isNaN(parsed.getTime())) return "";
   return Utilities.formatDate(parsed, APP_TIMEZONE, "yyyy-MM-dd");
+}
+
+/**
+ * Lấy dòng FMS hiện tại của 1 flock (DATE gần nhất <= hôm nay).
+ *
+ * @param {string} flockId
+ * @returns {Object|null}
+ */
+function _getCurrentFmsRow_(flockId) {
+  const target = String(flockId || "").trim();
+  if (!target) return null;
+
+  const rows = getSheetData_("FMS")
+    .filter(function (r) {
+      return String(r["FLOCK_ID"] || "").trim() === target;
+    })
+    .sort(function (a, b) {
+      return new Date(a["DATE"]) - new Date(b["DATE"]);
+    });
+
+  if (rows.length === 0) return null;
+
+  const today = getTodayInTZ_();
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (new Date(rows[i]["DATE"]) <= today) {
+      return rows[i];
+    }
+  }
+  return rows[0] || null;
+}
+
+/**
+ * Date2 = ngày trước dòng đầu tiên có Stock level percentage <= 0.
+ *
+ * @param {string} flockId
+ * @returns {Date|null}
+ */
+function _findDate2_(flockId) {
+  const target = String(flockId || "").trim();
+  if (!target) return null;
+
+  const rows = getSheetData_("FMS")
+    .filter(function (r) {
+      return String(r["FLOCK_ID"] || "").trim() === target;
+    })
+    .sort(function (a, b) {
+      return new Date(a["DATE"]) - new Date(b["DATE"]);
+    });
+
+  if (rows.length <= 1) return null;
+
+  for (let i = 0; i < rows.length; i++) {
+    const pct = _parsePercentToNumber_(rows[i]["Stock level percentage"]);
+    if (pct <= 0) {
+      if (i === 0) return null;
+      const prevDate = new Date(rows[i - 1]["DATE"]);
+      return isNaN(prevDate.getTime()) ? null : prevDate;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Lấy FEED_end_qtty tại 1 ngày tham chiếu cho flock.
+ *
+ * @param {string} flockId
+ * @param {Date|string} refDate
+ * @returns {number|null}
+ */
+function _getFeedEndQtyAtDate_(flockId, refDate) {
+  const target = String(flockId || "").trim();
+  if (!target || !refDate) return null;
+
+  const ref = refDate instanceof Date ? refDate : new Date(refDate);
+  if (isNaN(ref.getTime())) return null;
+  const refKey = Utilities.formatDate(ref, APP_TIMEZONE, "yyyy-MM-dd");
+
+  const rows = getSheetData_("FMS").filter(function (r) {
+    return String(r["FLOCK_ID"] || "").trim() === target;
+  });
+
+  for (let i = 0; i < rows.length; i++) {
+    const d = new Date(rows[i]["DATE"]);
+    if (isNaN(d.getTime())) continue;
+    const rowKey = Utilities.formatDate(d, APP_TIMEZONE, "yyyy-MM-dd");
+    if (rowKey === refKey) {
+      const qty = Number(rows[i]["FEED_end_qtty"]);
+      return isNaN(qty) ? null : qty;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Parse chuỗi phần trăm bất kỳ về number.
+ * VD: "12%" -> 12, "-0.5" -> -0.5, null -> NaN.
+ *
+ * @param {*} value
+ * @returns {number}
+ */
+function _parsePercentToNumber_(value) {
+  if (value === null || value === undefined || value === "") return NaN;
+  if (typeof value === "number") return value;
+  const cleaned = String(value).replace(/%/g, "").replace(/,/g, "").trim();
+  const num = Number(cleaned);
+  return isNaN(num) ? NaN : num;
+}
+
+/**
+ * Gắn giá trị hiển thị của cột "Stock level percentage" từ sheet vào row,
+ * để FE nhận đúng dữ liệu % theo database (VD 150% thay vì 1.5).
+ *
+ * @param {Object[]} rows
+ * @private
+ */
+function _attachFmsStockLevelDisplay_(rows) {
+  if (!rows || rows.length === 0) return;
+
+  const headers = getSheetHeaders_("FMS");
+  const stockPctColIdx = headers.findIndex(function (h) {
+    const key = String(h || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, " ");
+    return key === "STOCK LEVEL PERCENTAGE" || key === "STOCK_LEVEL_PERCENTAGE";
+  });
+  if (stockPctColIdx < 0) return;
+
+  const rowNums = rows
+    .map(function (r) {
+      return Number(r && r.__row);
+    })
+    .filter(function (n) {
+      return isFinite(n) && n > 0;
+    });
+  if (rowNums.length === 0) return;
+
+  const minRow = Math.min.apply(null, rowNums);
+  const maxRow = Math.max.apply(null, rowNums);
+  const displayValues = getSheet_("FMS")
+    .getRange(minRow, stockPctColIdx + 1, maxRow - minRow + 1, 1)
+    .getDisplayValues();
+
+  const byRow = {};
+  for (let i = 0; i < displayValues.length; i++) {
+    byRow[minRow + i] = displayValues[i][0];
+  }
+
+  rows.forEach(function (r) {
+    const rowNum = Number(r && r.__row);
+    if (!isFinite(rowNum) || rowNum <= 0) return;
+    const display = byRow[rowNum];
+    if (display === null || display === undefined || display === "") return;
+    r["Stock level percentage"] = display;
+  });
 }
