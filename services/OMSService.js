@@ -149,10 +149,8 @@ function createOrder(payload) {
 /**
  * Cập nhật trạng thái Order (nút cập nhật nhanh — PRD §3.3).
  *
- * ⚠️ Chặn đổi ngược từ `Hoàn tất` → `Chờ giao` theo đề xuất PRD §3.3, NHƯNG
- * đây là quy tắc **chưa được xác nhận chính thức** (PRD ghi rõ "[đề xuất,
- * cần xác nhận]") — nếu Phúc xác nhận KHÔNG cần rule này, xoá đoạn if bên
- * dưới là đủ, không ảnh hưởng chỗ khác.
+ * Rule nghiệp vụ: đơn đã `Hoàn tất` sẽ bị khóa, không cho cập nhật thêm
+ * (kể cả cập nhật status hay các field khác qua API liên quan).
  *
  * @param {string} orderId
  * @param {string} status - Phải thuộc `ORDER_STATUS`.
@@ -174,7 +172,7 @@ function updateOrderStatus(orderId, status) {
     ];
     if (allowedStatuses.indexOf(status) === -1) {
       throw new Error(
-        'INVALID_STATUS::Trạng thái không hợp lệ: "' + status + '".',
+        'INVALID_STATUS: Trạng thái không hợp lệ: "' + status + '".',
       );
     }
 
@@ -186,16 +184,26 @@ function updateOrderStatus(orderId, status) {
     });
     if (!row) {
       throw new Error(
-        'ORDER_NOT_FOUND::Không tìm thấy Order ID="' + orderId + '".',
+        'ORDER_NOT_FOUND: Không tìm thấy Order ID="' + orderId + '".',
       );
     }
 
     const previousStatus = String(row["Status"] || "").trim();
+    if (_getOmsStatusLevel_(previousStatus) === 4) {
+      throw new Error(
+        'ORDER_LOCKED_COMPLETED: Đơn hàng "' +
+          orderId +
+          '" đã ở trạng thái "' +
+          ORDER_STATUS.COMPLETED +
+          '", không thể cập nhật.',
+      );
+    }
+
     const previousLevel = _getOmsStatusLevel_(previousStatus);
     const nextLevel = _getOmsStatusLevel_(status);
     if (previousLevel === 4 && nextLevel < 4) {
       throw new Error(
-        'INVALID_STATUS_TRANSITION::Không thể đổi đơn đã "' +
+        'INVALID_STATUS_TRANSITION: Không thể đổi đơn đã "' +
           ORDER_STATUS.COMPLETED +
           '" về stage thấp hơn.',
       );
@@ -204,7 +212,7 @@ function updateOrderStatus(orderId, status) {
     const qty = Number(row["Số lượng"] || 0);
     if (!(qty > 0)) {
       throw new Error(
-        'INVALID_ORDER_DATA::Số lượng đơn hàng không hợp lệ cho Order ID="' +
+        'INVALID_ORDER_DATA: Số lượng đơn hàng không hợp lệ cho Order ID="' +
           orderId +
           '".',
       );
@@ -215,7 +223,7 @@ function updateOrderStatus(orderId, status) {
       const fromLoc = _resolveLocationScope_(row["Nơi đi"]);
       if (fromLoc.scope !== "factory") {
         throw new Error(
-          'INVALID_SOURCE_SCOPE::Điểm đi của Order "' +
+          'INVALID_SOURCE_SCOPE: Điểm đi của Order "' +
             orderId +
             '" không thuộc scope factory.',
         );
@@ -356,7 +364,7 @@ function updateOrder(orderId, payload) {
     requirePermission_("oms.order.write");
     Validation_.requireField(orderId, "orderId");
     if (!payload || typeof payload !== "object") {
-      throw new Error("INVALID_PAYLOAD::Thiếu payload cập nhật đơn hàng.");
+      throw new Error("INVALID_PAYLOAD: Thiếu payload cập nhật đơn hàng.");
     }
 
     const rows = getSheetData_("OMS");
@@ -364,7 +372,18 @@ function updateOrder(orderId, payload) {
       return String(_getOmsOrderIdFromRow_(r)).trim() === String(orderId).trim();
     });
     if (!row) {
-      throw new Error('ORDER_NOT_FOUND::Không tìm thấy Order ID="' + orderId + '".');
+      throw new Error('ORDER_NOT_FOUND: Không tìm thấy Order ID="' + orderId + '".');
+    }
+
+    const currentStatus = String(row["Status"] || "").trim();
+    if (_getOmsStatusLevel_(currentStatus) === 4) {
+      throw new Error(
+        'ORDER_LOCKED_COMPLETED: Đơn hàng "' +
+          orderId +
+          '" đã ở trạng thái "' +
+          ORDER_STATUS.COMPLETED +
+          '", không thể cập nhật.',
+      );
     }
 
     const headers = getSheetHeaders_("OMS");
@@ -471,7 +490,7 @@ function updateOrder(orderId, payload) {
     Object.keys(colMap).forEach(function (k) {
       if (Number(k) <= 0) {
         throw new Error(
-          'SHEET_SCHEMA_MISSING::Thiếu cột bắt buộc trên sheet OMS (key=' + k + ').',
+          'SHEET_SCHEMA_MISSING: Thiếu cột bắt buộc trên sheet OMS (key=' + k + ').',
         );
       }
     });

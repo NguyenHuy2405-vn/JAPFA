@@ -14,7 +14,7 @@
 		rel="stylesheet">
 	<script src="https://www.gstatic.com/charts/loader.js"></script>
 	<style>
-		<? !=include('ui/assets/style') ?>
+		<?!=include('ui/assets/style') ?>
 	</style>
 </head>
 
@@ -30,8 +30,7 @@
 				<div class="brand-mark"><img id="brandLogo" class="brand-logo" alt="JAPFA logo"></div>
 				<div>
 					<h1 class="brand-title" id="brandTitle">JAPFA Poultry Control Tower</h1>
-					<p class="brand-sub" id="brandContext">Hệ thống giám sát vận hành feed logistics theo thời gian
-						thực
+					<p class="brand-sub" id="brandContext">Hệ thống giám sát vận hành feed logistics theo thời gian thực
 					</p>
 				</div>
 			</div>
@@ -124,7 +123,7 @@
 					</div>
 				</div>
 				<div class="card" style="padding:10px;">
-					<div class="filter-bar">
+					<div class="filter-bar" style="align-items:flex-end;">
 						<select class="form-control" id="omsStatusFilter">
 							<option value="" id="omsStatusAllOption">Tất cả trạng thái</option>
 							<option value="Lên kế hoạch" id="omsStatusPlannedOption">Lên kế hoạch</option>
@@ -160,7 +159,7 @@
 					<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
 						<h3 style="margin:0;" id="omsFactoryTitle">WMS Nhà máy</h3>
 					</div>
-					<div class="grid-2" style="padding:10px;">
+					<div style="padding:10px;display:grid;grid-template-columns:1fr;gap:12px;">
 						<div class="card" style="padding:0;">
 							<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
 								<h3 style="margin:0;" id="omsFactoryInventoryTitle">Tồn kho nhà máy</h3>
@@ -191,49 +190,58 @@
 				<div class="view-head">
 					<div>
 						<h2 id="wmsTitle">WMS Farm - Tồn kho và giao dịch</h2>
-						<p id="wmsDesc">Dành cho kỹ thuật Farm: theo dõi tồn kho farm, nhập xuất tay và adjustment.
-						</p>
-					</div>
-					<div class="inline-fields">
-						<button class="btn btn-outline" id="btnWmsInbound"><span
-								class="material-symbols-outlined">move_down</span><span
-								id="btnWmsInboundLabel">Inbound</span></button>
-						<button class="btn btn-outline" id="btnWmsOutbound"><span
-								class="material-symbols-outlined">move_up</span><span
-								id="btnWmsOutboundLabel">Outbound</span></button>
-						<button class="btn btn-primary" id="btnWmsAdjust"><span
-								class="material-symbols-outlined">tune</span><span
-								id="btnWmsAdjustLabel">Adjustment</span></button>
+						<p id="wmsDesc">Dành cho kỹ thuật Farm: theo dõi tồn kho farm, nhập xuất tay và adjustment.</p>
 					</div>
 				</div>
 				<div class="card" style="padding:10px;">
 					<div class="filter-bar">
-						<select class="form-control" id="wmsScopeFilter" style="display:none;">
-							<option value="farm" id="wmsScopeFarmOption">Farm</option>
-							<option value="factory" id="wmsScopeFactoryOption">Factory</option>
-						</select>
-						<select class="form-control" id="wmsTenantFilter"></select>
+						<div style="min-width:220px;">
+							<label class="form-label" id="wmsFarmFilterLabel"
+								style="display:block;margin-bottom:4px;">Farm</label>
+							<select class="form-control" id="wmsFarmFilter"></select>
+						</div>
+						<div style="min-width:220px;">
+							<label class="form-label" id="wmsFlockFilterLabel"
+								style="display:block;margin-bottom:4px;">Flock</label>
+							<select class="form-control" id="wmsFlockFilter"></select>
+						</div>
 						<button class="btn btn-outline" id="btnWmsRefresh"><span
 								class="material-symbols-outlined">refresh</span><span id="btnWmsRefreshLabel">Tải
 								lại</span></button>
-						<span class="toolbar-note" id="wmsScopeNote">Scope Factory tự động bỏ lọc tenant.</span>
 					</div>
 				</div>
-				<div class="grid-2" style="margin-top:10px;">
+				<div style="margin-top:10px;display:grid;grid-template-columns:1fr;gap:12px;">
 					<div class="card" style="padding:0;">
 						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
-							<h3 style="margin:0;" id="wmsInventoryTitle">Tồn kho hiện tại</h3>
+							<h3 style="margin:0;" id="wmsInventoryTitle">Current Inventory</h3>
 						</div>
 						<div class="table-wrap">
-							<table class="erp-table">
-								<thead id="wmsInventoryHead"></thead>
-								<tbody id="wmsInventoryBody"></tbody>
+							<table class="erp-table" id="wmsCurrentInfoTable">
+								<thead id="wmsCurrentInfoHead"></thead>
+								<tbody id="wmsCurrentInfoBody"></tbody>
 							</table>
+						</div>
+						<div style="padding:12px 14px;border-top:1px solid var(--line);text-align:right;">
+							<button class="btn btn-primary" id="btnWmsCreateOrder"><span
+									class="material-symbols-outlined">add_shopping_cart</span><span
+									id="btnWmsCreateOrderLabel">Create Order</span></button>
 						</div>
 					</div>
 					<div class="card" style="padding:0;">
-						<div style="padding:12px 14px;border-bottom:1px solid var(--line);">
-							<h3 style="margin:0;" id="wmsTxnTitle">Giao dịch gần nhất</h3>
+						<div class="filter-bar"
+							style="padding:12px 14px;border-bottom:1px solid var(--line);align-items:center;justify-content:space-between;">
+							<h3 style="margin:0;" id="wmsTxnTitle">Feed Inventory Log</h3>
+							<div class="inline-fields">
+								<button class="btn btn-outline" id="btnWmsInbound"><span
+										class="material-symbols-outlined">move_down</span><span
+										id="btnWmsInboundLabel">Inbound</span></button>
+								<button class="btn btn-outline" id="btnWmsOutbound"><span
+										class="material-symbols-outlined">move_up</span><span
+										id="btnWmsOutboundLabel">Outbound</span></button>
+								<button class="btn btn-primary" id="btnWmsAdjust"><span
+										class="material-symbols-outlined">tune</span><span
+										id="btnWmsAdjustLabel">Adjustment</span></button>
+							</div>
 						</div>
 						<div class="table-wrap">
 							<table class="erp-table">
