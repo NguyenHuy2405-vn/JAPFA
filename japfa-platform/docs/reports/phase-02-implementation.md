@@ -113,3 +113,9 @@ pnpm lint       -> pass
 - Nếu generated ID migration gây lỗi, giữ các cột additive và rollback application về version trước; không drop dữ liệu production.
 - Nếu state transition mới gây regression, revert riêng transition map về version trước nhưng giữ test để xác định hành vi mong muốn.
 - Nếu contract reconciliation gây migration risk, giữ production field names hiện tại và thực hiện mapping ở domain service thay vì đổi schema trực tiếp.
+
+## Blocker Fix Update — 2026-09-15
+
+- Đã thêm mapping layer cho tenant, product, notification và FMS.
+- Phase 02 document đã có bảng `Field Mapping — Production vs Canonical`.
+- Mapping tests đã chạy trong suite 25 tests pass; chi tiết tại [fix-blocker-02-field-mapping.md](./fix-blocker-02-field-mapping.md).
