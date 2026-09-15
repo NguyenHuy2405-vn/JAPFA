@@ -1,12 +1,13 @@
 import type { CollectionConfig } from "payload";
 import { adminOnly } from "@/access/admin-only";
+import { authenticated } from "@/access/authenticated";
 
 export const FmsDailyLogs: CollectionConfig = {
   slug: "fms-daily-logs",
   access: {
-    read: adminOnly,
-    create: adminOnly,
-    update: adminOnly,
+    read: authenticated,
+    create: authenticated,
+    update: authenticated,
     delete: adminOnly,
   },
   admin: {
