@@ -1,7 +1,0 @@
-# Ignore old legacy folder
-japfa-payload/
-
-# Ignore node_modules & OS junk
-node_modules/
-.DS_Store
-Thumbs.db
