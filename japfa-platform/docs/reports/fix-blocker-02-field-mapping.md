@@ -8,15 +8,15 @@
 
 ## Files changed
 
-| File | Loại | Mô tả |
-|---|---|---|
-| [src/domains/shared/field-mapping.ts](../../src/domains/shared/field-mapping.ts) | New | Bảng mapping tập trung. |
-| [src/domains/tenants/mapper.ts](../../src/domains/tenants/mapper.ts) | New | `type` ↔ `tenantType`. |
-| [src/domains/products/mapper.ts](../../src/domains/products/mapper.ts) | New | `productType` ↔ `category`. |
-| [src/domains/notifications/mapper.ts](../../src/domains/notifications/mapper.ts) | New | `message`/`recipient` ↔ `content`/`targetUser`. |
-| [src/domains/fms/mapper.ts](../../src/domains/fms/mapper.ts) | New | `feedQtyAct`/`mortAct`/`endQty` ↔ canonical names. |
-| [src/domains/__tests__/field-mapping.test.ts](../../src/domains/__tests__/field-mapping.test.ts) | New | Test mapping behavior. |
-| [docs/phases/02-phase-core-domain-and-data-model.md](../phases/02-phase-core-domain-and-data-model.md) | Modified | Thêm Field Mapping section. |
+| File                                                                                                   | Loại     | Mô tả                                              |
+| ------------------------------------------------------------------------------------------------------ | -------- | -------------------------------------------------- |
+| [src/domains/shared/field-mapping.ts](../../src/domains/shared/field-mapping.ts)                       | New      | Bảng mapping tập trung.                            |
+| [src/domains/tenants/mapper.ts](../../src/domains/tenants/mapper.ts)                                   | New      | `type` ↔ `tenantType`.                             |
+| [src/domains/products/mapper.ts](../../src/domains/products/mapper.ts)                                 | New      | `productType` ↔ `category`.                        |
+| [src/domains/notifications/mapper.ts](../../src/domains/notifications/mapper.ts)                       | New      | `message`/`recipient` ↔ `content`/`targetUser`.    |
+| [src/domains/fms/mapper.ts](../../src/domains/fms/mapper.ts)                                           | New      | `feedQtyAct`/`mortAct`/`endQty` ↔ canonical names. |
+| [src/domains/**tests**/field-mapping.test.ts](../../src/domains/__tests__/field-mapping.test.ts)       | New      | Test mapping behavior.                             |
+| [docs/phases/02-phase-core-domain-and-data-model.md](../phases/02-phase-core-domain-and-data-model.md) | Modified | Thêm Field Mapping section.                        |
 
 ## Test Execution
 

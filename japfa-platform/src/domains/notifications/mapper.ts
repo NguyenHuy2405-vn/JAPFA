@@ -20,8 +20,6 @@ export function fromNotificationCanonical(input: {
 }): Partial<Pick<Notification, "message" | "recipient">> {
   return {
     ...(input.content === undefined ? {} : { message: input.content }),
-    ...(input.targetUser === undefined
-      ? {}
-      : { recipient: input.targetUser }),
+    ...(input.targetUser === undefined ? {} : { recipient: input.targetUser }),
   };
 }

@@ -11,24 +11,24 @@
 
 ## Files đã thay đổi
 
-| File | Loại | Mô tả |
-|---|---|---|
-| [src/access/admin-only.ts](../../src/access/admin-only.ts) | Modified | Chuẩn hóa `adminOnly`, compatibility exports và `systemOnly`. |
-| [src/access/authenticated.ts](../../src/access/authenticated.ts) | New | Access helper cho authenticated user. |
-| [src/access/deny-all.ts](../../src/access/deny-all.ts) | New | Access helper luôn deny. |
-| [src/access/__tests__/access-control.test.ts](../../src/access/__tests__/access-control.test.ts) | New | Test access helpers và append-only collections. |
-| [src/collections/Users.ts](../../src/collections/Users.ts) | Modified | Read-only `authzVersion`, `createdBy`; delete deny. |
-| [src/collections/Tenants.ts](../../src/collections/Tenants.ts) | Modified | Admin delete; `tenantId` read-only. |
-| [src/collections/Flocks.ts](../../src/collections/Flocks.ts) | Modified | Admin delete; `flockId` read-only. |
-| [src/collections/Products.ts](../../src/collections/Products.ts) | Modified | Admin delete; `sku` read-only. |
-| [src/collections/FeedStandards.ts](../../src/collections/FeedStandards.ts) | Modified | Admin delete theo matrix. |
-| [src/collections/PolicyThresholds.ts](../../src/collections/PolicyThresholds.ts) | Modified | Admin delete theo matrix. |
-| [src/collections/Orders.ts](../../src/collections/Orders.ts) | Modified | Admin delete theo matrix; `orderId` read-only và không update được. |
-| [src/collections/WmsTransactions.ts](../../src/collections/WmsTransactions.ts) | Modified | Dùng deny helper riêng; update/delete deny. |
-| [src/collections/FmsDailyLogs.ts](../../src/collections/FmsDailyLogs.ts) | Modified | Admin delete theo matrix. |
-| [src/collections/TransferRequests.ts](../../src/collections/TransferRequests.ts) | Modified | Admin delete; `transferId` read-only và không update được. |
-| [src/collections/Notifications.ts](../../src/collections/Notifications.ts) | Modified | System create, admin read, deny update/delete. |
-| [src/collections/AuditLogs.ts](../../src/collections/AuditLogs.ts) | Modified | System create, admin read, deny update/delete. |
+| File                                                                                             | Loại     | Mô tả                                                               |
+| ------------------------------------------------------------------------------------------------ | -------- | ------------------------------------------------------------------- |
+| [src/access/admin-only.ts](../../src/access/admin-only.ts)                                       | Modified | Chuẩn hóa `adminOnly`, compatibility exports và `systemOnly`.       |
+| [src/access/authenticated.ts](../../src/access/authenticated.ts)                                 | New      | Access helper cho authenticated user.                               |
+| [src/access/deny-all.ts](../../src/access/deny-all.ts)                                           | New      | Access helper luôn deny.                                            |
+| [src/access/**tests**/access-control.test.ts](../../src/access/__tests__/access-control.test.ts) | New      | Test access helpers và append-only collections.                     |
+| [src/collections/Users.ts](../../src/collections/Users.ts)                                       | Modified | Read-only `authzVersion`, `createdBy`; delete deny.                 |
+| [src/collections/Tenants.ts](../../src/collections/Tenants.ts)                                   | Modified | Admin delete; `tenantId` read-only.                                 |
+| [src/collections/Flocks.ts](../../src/collections/Flocks.ts)                                     | Modified | Admin delete; `flockId` read-only.                                  |
+| [src/collections/Products.ts](../../src/collections/Products.ts)                                 | Modified | Admin delete; `sku` read-only.                                      |
+| [src/collections/FeedStandards.ts](../../src/collections/FeedStandards.ts)                       | Modified | Admin delete theo matrix.                                           |
+| [src/collections/PolicyThresholds.ts](../../src/collections/PolicyThresholds.ts)                 | Modified | Admin delete theo matrix.                                           |
+| [src/collections/Orders.ts](../../src/collections/Orders.ts)                                     | Modified | Admin delete theo matrix; `orderId` read-only và không update được. |
+| [src/collections/WmsTransactions.ts](../../src/collections/WmsTransactions.ts)                   | Modified | Dùng deny helper riêng; update/delete deny.                         |
+| [src/collections/FmsDailyLogs.ts](../../src/collections/FmsDailyLogs.ts)                         | Modified | Admin delete theo matrix.                                           |
+| [src/collections/TransferRequests.ts](../../src/collections/TransferRequests.ts)                 | Modified | Admin delete; `transferId` read-only và không update được.          |
+| [src/collections/Notifications.ts](../../src/collections/Notifications.ts)                       | Modified | System create, admin read, deny update/delete.                      |
+| [src/collections/AuditLogs.ts](../../src/collections/AuditLogs.ts)                               | Modified | System create, admin read, deny update/delete.                      |
 
 ## Sensitive fields
 

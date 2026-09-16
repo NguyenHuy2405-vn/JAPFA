@@ -3,18 +3,9 @@ import { adminOnly } from "@/access/admin-only";
 import { authenticated } from "@/access/authenticated";
 import { operatorOrAdmin } from "@/access/operator-or-admin";
 import { assertTransferTransition } from "@/domains/transfers/state-machine";
-import {
-  buildStatusIdempotencyKey,
-  reserveIdempotencyKey,
-} from "@/services/idempotency/idempotency.service";
-import {
-  notifyTransferApproved,
-  notifyTransferCompleted,
-  notifyTransferIncoming,
-  notifyTransferReceived,
-  notifyTransferRejected,
-} from "@/services/notification/notification.service";
-import { writeAudit } from "@/services/audit/audit.service";
+import { checkIdempotency } from "@/hooks/check-idempotency";
+import { recordIdempotency } from "@/hooks/record-idempotency";
+import { transferWorkflow } from "@/workflows/transfer-request";
 
 export const TransferRequests: CollectionConfig = {
   slug: "transfer-requests",
@@ -149,6 +140,7 @@ export const TransferRequests: CollectionConfig = {
       },
     ],
     beforeChange: [
+      checkIdempotency,
       async ({ data, originalDoc, req, operation }) => {
         if (
           operation === "update" &&
@@ -162,103 +154,10 @@ export const TransferRequests: CollectionConfig = {
             String(data.status),
             req.user?.role,
           );
-          await reserveIdempotencyKey(req.payload, req, {
-            key: buildStatusIdempotencyKey(
-              "transfer-requests",
-              originalDoc.id,
-              String(data.status),
-            ),
-            collection: "transfer-requests",
-            action: "STATUS_CHANGE",
-            resultId: originalDoc.id,
-          });
         }
         return data;
       },
     ],
-    afterChange: [
-      async ({ doc, previousDoc, req }) => {
-        if (req.context?.migration) return;
-
-        try {
-          if (doc.status === "APPROVED" && previousDoc?.status !== "APPROVED") {
-            await notifyTransferApproved(req.payload, doc);
-          }
-          if (doc.status === "REJECTED" && previousDoc?.status !== "REJECTED") {
-            await notifyTransferRejected(
-              req.payload,
-              doc,
-              doc.note || "Không có lý do cụ thể",
-            );
-          }
-          if (
-            doc.status === "IN_TRANSIT" &&
-            previousDoc?.status !== "IN_TRANSIT"
-          ) {
-            await notifyTransferIncoming(req.payload, doc);
-          }
-          if (doc.status === "RECEIVED" && previousDoc?.status !== "RECEIVED") {
-            await notifyTransferReceived(req.payload, doc);
-          }
-          if (
-            doc.status === "COMPLETED" &&
-            previousDoc?.status !== "COMPLETED"
-          ) {
-            await notifyTransferCompleted(req.payload, doc);
-          }
-        } catch (notificationError) {
-          console.error("[NOTIFICATION_FAILED] transfer", {
-            transferId: doc.transferId,
-            error:
-              notificationError instanceof Error
-                ? notificationError.message
-                : String(notificationError),
-          });
-        }
-
-        if (req.user) {
-          if (
-            doc.status === "APPROVED" &&
-            previousDoc?.status !== "APPROVED"
-          ) {
-            await writeAudit(req.payload, {
-              actorUserId: req.user.id,
-              actorEmail: req.user.email,
-              actorRole: req.user.role,
-              action: "TRANSFER_APPROVED",
-              targetCollection: "transfer-requests",
-              targetId: doc.id,
-            }, req);
-          }
-          if (
-            doc.status === "REJECTED" &&
-            previousDoc?.status !== "REJECTED"
-          ) {
-            await writeAudit(req.payload, {
-              actorUserId: req.user.id,
-              actorEmail: req.user.email,
-              actorRole: req.user.role,
-              action: "TRANSFER_REJECTED",
-              targetCollection: "transfer-requests",
-              targetId: doc.id,
-              after: { reason: doc.note },
-            }, req);
-          }
-          if (
-            doc.status === "RECEIVED" &&
-            previousDoc?.status !== "RECEIVED"
-          ) {
-            await writeAudit(req.payload, {
-              actorUserId: req.user.id,
-              actorEmail: req.user.email,
-              actorRole: req.user.role,
-              action: "TRANSFER_RECEIVED",
-              targetCollection: "transfer-requests",
-              targetId: doc.id,
-            }, req);
-          }
-        }
-      },
-    ],
+    afterChange: [transferWorkflow, recordIdempotency],
   },
 };

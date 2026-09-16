@@ -1,0 +1,14 @@
+/* Horizontal scrolling for wide Payload collection tables. */
+.collection-list__tables .table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.collection-list__tables .table-wrap .table {
+  overflow: visible;
+}
+
+.collection-list__tables .table-wrap .table table {
+  min-width: max-content;
+}

@@ -266,15 +266,15 @@ Append-only: create bởi system và read bởi admin.
 
 ## Field Mapping — Production vs Canonical
 
-| Canonical (doc) | Production (code) | Collection |
-|---|---|---|
-| `tenantType` | `type` | tenants |
-| `category` | `productType` | products |
-| `content` | `message` | notifications |
-| `targetUser` | `recipient` | notifications |
-| `feedConsumed` | `feedQtyAct` | fms-daily-logs |
-| `mortality` | `mortAct` | fms-daily-logs |
-| `avgWeight` | `endQty` | fms-daily-logs |
+| Canonical (doc) | Production (code) | Collection     |
+| --------------- | ----------------- | -------------- |
+| `tenantType`    | `type`            | tenants        |
+| `category`      | `productType`     | products       |
+| `content`       | `message`         | notifications  |
+| `targetUser`    | `recipient`       | notifications  |
+| `feedConsumed`  | `feedQtyAct`      | fms-daily-logs |
+| `mortality`     | `mortAct`         | fms-daily-logs |
+| `avgWeight`     | `endQty`          | fms-daily-logs |
 
 Mapping được thực thi tại:
 

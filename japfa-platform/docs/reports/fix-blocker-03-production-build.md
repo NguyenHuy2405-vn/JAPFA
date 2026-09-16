@@ -8,11 +8,11 @@
 
 ## Files changed
 
-| File | Loại | Mô tả |
-|---|---|---|
-| [package.json](../../package.json) | Existing | Dependency/toolchain được reinstall theo lockfile hiện tại. |
-| [pnpm-lock.yaml](../../pnpm-lock.yaml) | Existing | Được pnpm kiểm tra trong clean install. |
-| `.next/` | Generated | Đã xóa và tạo lại trong build; không phải source artifact. |
+| File                                   | Loại      | Mô tả                                                       |
+| -------------------------------------- | --------- | ----------------------------------------------------------- |
+| [package.json](../../package.json)     | Existing  | Dependency/toolchain được reinstall theo lockfile hiện tại. |
+| [pnpm-lock.yaml](../../pnpm-lock.yaml) | Existing  | Được pnpm kiểm tra trong clean install.                     |
+| `.next/`                               | Generated | Đã xóa và tạo lại trong build; không phải source artifact.  |
 
 ## Build Execution
 

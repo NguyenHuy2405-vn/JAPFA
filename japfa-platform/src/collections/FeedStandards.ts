@@ -18,7 +18,7 @@ export const FeedStandards: CollectionConfig = {
       name: "chickenType",
       type: "text",
       required: true,
-      label: "Loại Gà (Ví dụ: ChoiNoi_Male_GiaLai)",
+      label: "Loại Gà",
     },
     {
       name: "ageInDays",

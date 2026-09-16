@@ -3,17 +3,10 @@ import { adminOnly } from "@/access/admin-only";
 import { authenticated } from "@/access/authenticated";
 import { operatorOrAdmin } from "@/access/operator-or-admin";
 import { assertOrderTransition } from "@/domains/orders/state-machine";
-import {
-  buildStatusIdempotencyKey,
-  reserveIdempotencyKey,
-} from "@/services/idempotency/idempotency.service";
-import {
-  notifyOrderApproved,
-  notifyOrderCompleted,
-  notifyOrderIncoming,
-  notifyOrderReceived,
-  notifyOrderRejected,
-} from "@/services/notification/notification.service";
+import { checkIdempotency } from "@/hooks/check-idempotency";
+import { recordIdempotency } from "@/hooks/record-idempotency";
+import { approveOrderWorkflow } from "@/workflows/approve-order";
+import { receiveOrderWorkflow } from "@/workflows/receive-order";
 import { writeAudit } from "@/services/audit/audit.service";
 
 export const Orders: CollectionConfig = {
@@ -179,6 +172,7 @@ export const Orders: CollectionConfig = {
       },
     ],
     beforeChange: [
+      checkIdempotency,
       async ({ data, originalDoc, req, operation }) => {
         if (
           operation === "update" &&
@@ -192,12 +186,6 @@ export const Orders: CollectionConfig = {
             String(data.status),
             req.user?.role,
           );
-          await reserveIdempotencyKey(req.payload, req, {
-            key: buildStatusIdempotencyKey("orders", originalDoc.id, String(data.status)),
-            collection: "orders",
-            action: "STATUS_CHANGE",
-            resultId: originalDoc.id,
-          });
         }
         return data;
       },
@@ -319,51 +307,27 @@ export const Orders: CollectionConfig = {
           });
         }
 
-        try {
-          if (doc.status === "APPROVED" && previousDoc?.status !== "APPROVED") {
-            await notifyOrderApproved(req.payload, doc);
-          }
-          if (doc.status === "REJECTED" && previousDoc?.status !== "REJECTED") {
-            await notifyOrderRejected(
-              req.payload,
-              doc,
-              doc.note || "Không có lý do cụ thể",
-            );
-          }
-          if (
-            doc.status === "IN_TRANSIT" &&
-            previousDoc?.status !== "IN_TRANSIT"
-          ) {
-            await notifyOrderIncoming(req.payload, doc);
-          }
-          if (doc.status === "RECEIVED" && previousDoc?.status !== "RECEIVED") {
-            await notifyOrderReceived(req.payload, doc);
-          }
-          if (
-            doc.status === "COMPLETED" &&
-            previousDoc?.status !== "COMPLETED"
-          ) {
-            await notifyOrderCompleted(req.payload, doc);
-          }
-        } catch (notificationError) {
-          console.error("[NOTIFICATION_FAILED] order", {
-            orderId: doc.orderId,
-            error:
-              notificationError instanceof Error
-                ? notificationError.message
-                : String(notificationError),
-          });
-        }
-
         if (req.user) {
-          if (doc.status === "APPROVED" && previousDoc?.status !== "APPROVED") {
-            await writeAudit(req.payload, { actorUserId: req.user.id, actorEmail: req.user.email, actorRole: req.user.role, action: "ORDER_APPROVED", targetCollection: "orders", targetId: doc.id }, req);
-          }
           if (doc.status === "REJECTED" && previousDoc?.status !== "REJECTED") {
-            await writeAudit(req.payload, { actorUserId: req.user.id, actorEmail: req.user.email, actorRole: req.user.role, action: "ORDER_REJECTED", targetCollection: "orders", targetId: doc.id, after: { reason: doc.note } }, req);
+            await writeAudit(
+              req.payload,
+              {
+                actorUserId: req.user.id,
+                actorEmail: req.user.email,
+                actorRole: req.user.role,
+                action: "ORDER_REJECTED",
+                targetCollection: "orders",
+                targetId: doc.id,
+                after: { reason: doc.note },
+              },
+              req,
+            );
           }
         }
       },
+      approveOrderWorkflow,
+      receiveOrderWorkflow,
+      recordIdempotency,
     ],
   },
 };

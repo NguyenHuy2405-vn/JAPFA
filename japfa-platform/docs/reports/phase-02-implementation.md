@@ -11,21 +11,21 @@ Do repository đã có schema production/migrations riêng, các field đang đ�
 
 ## Files đã thay đổi
 
-| File | Loại | Mô tả |
-|---|---|---|
-| [src/domains/orders/state-machine.ts](../../src/domains/orders/state-machine.ts) | Modified | Cho phép transition `SUBMITTED/APPROVED -> CANCELLED`, validate finite state machine. |
-| [src/domains/transfers/state-machine.ts](../../src/domains/transfers/state-machine.ts) | Modified | Đồng bộ transfer lifecycle với Order state machine. |
-| [src/collections/Orders.ts](../../src/collections/Orders.ts) | Existing | Đã có generated `ORD` ID hook và `orderId` read-only; được kiểm tra bằng contract test. |
-| [src/collections/TransferRequests.ts](../../src/collections/TransferRequests.ts) | Existing | Đã có generated `TRF` ID hook và `transferId` read-only; được kiểm tra bằng contract test. |
-| [src/collections/FeedStandards.ts](../../src/collections/FeedStandards.ts) | Modified | Thêm `standardId` required/unique/read-only và generated ID hook. |
-| [src/collections/PolicyThresholds.ts](../../src/collections/PolicyThresholds.ts) | Modified | Thêm `thresholdId` required/unique/read-only và generated ID hook. |
-| [src/collections/FmsDailyLogs.ts](../../src/collections/FmsDailyLogs.ts) | Modified | Thêm `logId` required/unique/read-only và generated ID hook. |
-| [src/collections/WmsTransactions.ts](../../src/collections/WmsTransactions.ts) | Existing | Append-only: update/delete deny. |
-| [src/collections/AuditLogs.ts](../../src/collections/AuditLogs.ts) | Existing | Append-only: update/delete deny. |
-| [migrations/20260915_150000_add_phase2_generated_ids.ts](../../migrations/20260915_150000_add_phase2_generated_ids.ts) | New | Backfill và unique index cho `standardId`, `thresholdId`, `logId`. |
-| [src/collections/__tests__/phase-02-contracts.test.ts](../../src/collections/__tests__/phase-02-contracts.test.ts) | New | Test field contract, append-only policy và generated IDs. |
-| [src/domains/__tests__/state-machine.test.ts](../../src/domains/__tests__/state-machine.test.ts) | Existing/Updated coverage | Test happy path và invalid transitions. |
-| [payload-types.ts](../../payload-types.ts) | Generated | Regenerated Payload types sau schema changes. |
+| File                                                                                                                   | Loại                      | Mô tả                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------ |
+| [src/domains/orders/state-machine.ts](../../src/domains/orders/state-machine.ts)                                       | Modified                  | Cho phép transition `SUBMITTED/APPROVED -> CANCELLED`, validate finite state machine.      |
+| [src/domains/transfers/state-machine.ts](../../src/domains/transfers/state-machine.ts)                                 | Modified                  | Đồng bộ transfer lifecycle với Order state machine.                                        |
+| [src/collections/Orders.ts](../../src/collections/Orders.ts)                                                           | Existing                  | Đã có generated `ORD` ID hook và `orderId` read-only; được kiểm tra bằng contract test.    |
+| [src/collections/TransferRequests.ts](../../src/collections/TransferRequests.ts)                                       | Existing                  | Đã có generated `TRF` ID hook và `transferId` read-only; được kiểm tra bằng contract test. |
+| [src/collections/FeedStandards.ts](../../src/collections/FeedStandards.ts)                                             | Modified                  | Thêm `standardId` required/unique/read-only và generated ID hook.                          |
+| [src/collections/PolicyThresholds.ts](../../src/collections/PolicyThresholds.ts)                                       | Modified                  | Thêm `thresholdId` required/unique/read-only và generated ID hook.                         |
+| [src/collections/FmsDailyLogs.ts](../../src/collections/FmsDailyLogs.ts)                                               | Modified                  | Thêm `logId` required/unique/read-only và generated ID hook.                               |
+| [src/collections/WmsTransactions.ts](../../src/collections/WmsTransactions.ts)                                         | Existing                  | Append-only: update/delete deny.                                                           |
+| [src/collections/AuditLogs.ts](../../src/collections/AuditLogs.ts)                                                     | Existing                  | Append-only: update/delete deny.                                                           |
+| [migrations/20260915_150000_add_phase2_generated_ids.ts](../../migrations/20260915_150000_add_phase2_generated_ids.ts) | New                       | Backfill và unique index cho `standardId`, `thresholdId`, `logId`.                         |
+| [src/collections/**tests**/phase-02-contracts.test.ts](../../src/collections/__tests__/phase-02-contracts.test.ts)     | New                       | Test field contract, append-only policy và generated IDs.                                  |
+| [src/domains/**tests**/state-machine.test.ts](../../src/domains/__tests__/state-machine.test.ts)                       | Existing/Updated coverage | Test happy path và invalid transitions.                                                    |
+| [payload-types.ts](../../payload-types.ts)                                                                             | Generated                 | Regenerated Payload types sau schema changes.                                              |
 
 ## Field Contract Applied
 

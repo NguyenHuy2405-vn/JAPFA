@@ -109,17 +109,51 @@ export const Users: CollectionConfig = {
   hooks: {
     afterChange: [
       async ({ doc, previousDoc, req, operation }) => {
-        if (req.context?.migration || operation === "create" || !req.user) return;
+        if (req.context?.migration || operation === "create" || !req.user)
+          return;
         const actor = req.user;
         try {
           if (doc.role !== previousDoc?.role) {
-            await writeAudit(req.payload, { actorUserId: actor.id, actorEmail: actor.email, actorRole: actor.role, action: "USER_ROLE_CHANGED", targetCollection: "users", targetId: doc.id, before: { role: previousDoc?.role }, after: { role: doc.role } });
+            await writeAudit(req.payload, {
+              actorUserId: actor.id,
+              actorEmail: actor.email,
+              actorRole: actor.role,
+              action: "USER_ROLE_CHANGED",
+              targetCollection: "users",
+              targetId: doc.id,
+              before: { role: previousDoc?.role },
+              after: { role: doc.role },
+            });
           }
-          if (doc.accountStatus === "LOCKED" && previousDoc?.accountStatus !== "LOCKED") {
-            await writeAudit(req.payload, { actorUserId: actor.id, actorEmail: actor.email, actorRole: actor.role, action: "USER_LOCKED", targetCollection: "users", targetId: doc.id, before: { accountStatus: previousDoc?.accountStatus }, after: { accountStatus: doc.accountStatus } });
+          if (
+            doc.accountStatus === "LOCKED" &&
+            previousDoc?.accountStatus !== "LOCKED"
+          ) {
+            await writeAudit(req.payload, {
+              actorUserId: actor.id,
+              actorEmail: actor.email,
+              actorRole: actor.role,
+              action: "USER_LOCKED",
+              targetCollection: "users",
+              targetId: doc.id,
+              before: { accountStatus: previousDoc?.accountStatus },
+              after: { accountStatus: doc.accountStatus },
+            });
           }
-          if (doc.accountStatus === "ACTIVE" && previousDoc?.accountStatus === "LOCKED") {
-            await writeAudit(req.payload, { actorUserId: actor.id, actorEmail: actor.email, actorRole: actor.role, action: "USER_UNLOCKED", targetCollection: "users", targetId: doc.id, before: { accountStatus: previousDoc?.accountStatus }, after: { accountStatus: doc.accountStatus } });
+          if (
+            doc.accountStatus === "ACTIVE" &&
+            previousDoc?.accountStatus === "LOCKED"
+          ) {
+            await writeAudit(req.payload, {
+              actorUserId: actor.id,
+              actorEmail: actor.email,
+              actorRole: actor.role,
+              action: "USER_UNLOCKED",
+              targetCollection: "users",
+              targetId: doc.id,
+              before: { accountStatus: previousDoc?.accountStatus },
+              after: { accountStatus: doc.accountStatus },
+            });
           }
         } catch (error) {
           console.error("[AUDIT_FAILED] user", error);

@@ -79,6 +79,13 @@ export interface Config {
   user: User;
   jobs: {
     tasks: {
+      importLargeFile: TaskImportLargeFile;
+      reindexSearch: TaskReindexSearch;
+      sendOrderNotification: TaskSendOrderNotification;
+      recalculateInventory: TaskRecalculateInventory;
+      sendWelcomeEmail: TaskSendWelcomeEmail;
+      fmsAggregation: TaskFmsAggregation;
+      auditArchive: TaskAuditArchive;
       createCollectionExport: TaskCreateCollectionExport;
       createCollectionImport: TaskCreateCollectionImport;
       inline: {
@@ -113,7 +120,7 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
-  role: 'ADMIN';
+  role: 'ADMIN' | 'OPERATOR' | 'FARM';
   fullName: string;
   phone?: string | null;
   accountStatus: 'ACTIVE' | 'LOCKED';
@@ -163,6 +170,8 @@ export interface Tenant {
   managedByUser?: (number | null) | User;
   addressOfTenant?: string | null;
   phone?: string | null;
+  contactEmail?: string | null;
+  contactName?: string | null;
   flockName?: string | null;
   standardsApplied?: string | null;
   startFlockCount?: number | null;
@@ -617,7 +626,17 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'createCollectionExport' | 'createCollectionImport';
+        taskSlug:
+          | 'inline'
+          | 'importLargeFile'
+          | 'reindexSearch'
+          | 'sendOrderNotification'
+          | 'recalculateInventory'
+          | 'sendWelcomeEmail'
+          | 'fmsAggregation'
+          | 'auditArchive'
+          | 'createCollectionExport'
+          | 'createCollectionImport';
         taskID: string;
         input?:
           | {
@@ -650,7 +669,20 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'createCollectionExport' | 'createCollectionImport') | null;
+  taskSlug?:
+    | (
+        | 'inline'
+        | 'importLargeFile'
+        | 'reindexSearch'
+        | 'sendOrderNotification'
+        | 'recalculateInventory'
+        | 'sendWelcomeEmail'
+        | 'fmsAggregation'
+        | 'auditArchive'
+        | 'createCollectionExport'
+        | 'createCollectionImport'
+      )
+    | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
@@ -811,6 +843,8 @@ export interface TenantsSelect<T extends boolean = true> {
   managedByUser?: T;
   addressOfTenant?: T;
   phone?: T;
+  contactEmail?: T;
+  contactName?: T;
   flockName?: T;
   standardsApplied?: T;
   startFlockCount?: T;
@@ -1192,6 +1226,79 @@ export interface CollectionsWidget {
     [k: string]: unknown;
   };
   width: 'full';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskImportLargeFile".
+ */
+export interface TaskImportLargeFile {
+  input: {
+    fileUrl: string;
+    collection: string;
+  };
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskReindexSearch".
+ */
+export interface TaskReindexSearch {
+  input: {
+    collection?: string | null;
+  };
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskSendOrderNotification".
+ */
+export interface TaskSendOrderNotification {
+  input: {
+    orderId: string;
+    newStatus: string;
+  };
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskRecalculateInventory".
+ */
+export interface TaskRecalculateInventory {
+  input: {
+    tenantId: string;
+  };
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskSendWelcomeEmail".
+ */
+export interface TaskSendWelcomeEmail {
+  input: {
+    userId: string;
+    email: string;
+  };
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskFmsAggregation".
+ */
+export interface TaskFmsAggregation {
+  input: {
+    date: string;
+  };
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskAuditArchive".
+ */
+export interface TaskAuditArchive {
+  input: {
+    beforeDate: string;
+  };
+  output?: unknown;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

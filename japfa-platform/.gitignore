@@ -1,0 +1,56 @@
+# Dependencies
+/node_modules
+/.pnpm-store
+
+# Next.js Build output
+/.next/
+/out/
+
+# Environment Variables & Secrets (RẤT QUAN TRỌNG)
+.env
+.env*.local
+.env.production
+.env.staging
+
+# TypeScript Build Cache
+tsconfig.tsbuildinfo
+
+# Scratch & Temporary Files
+/scratch/
+
+# Documentation (Bỏ qua folder docs)
+docs/
+/docs/
+
+# Test Files & Test Folders
+/coverage/
+__tests__/
+**/__tests__/**
+*.test.ts
+*.test.tsx
+*.test.js
+*.test.jsx
+*.spec.ts
+*.spec.tsx
+*.spec.js
+*.spec.jsx
+vitest.config.ts
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# System & OS Files
+.DS_Store
+Thumbs.db
+*.pem
+
+# IDE / Editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
